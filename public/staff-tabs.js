@@ -21,7 +21,7 @@ function renderCoachingTab(me){
 }
 
 function renderFeedbackTab(me){
-  const fb=State.taps.filter(t=>(!me||t.staffId===me.id)&&t.feedback).sort((a,b)=>b.ts-a.ts).slice(0,30);
+  const fb=State.taps.filter(t=>(!me||t.staffId===me.id)&&t.feedback&&t.feedback.trim()).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,50);
   if(!fb.length)return`<div class="card" style="text-align:center;color:var(--lbl2);padding:40px">No feedback yet.</div>`;
   return fb.map(t=>`<div class="fb-item"><div class="fb-stars">${'★'.repeat(t.rating||0)}${'☆'.repeat(5-(t.rating||0))}</div><div class="fb-text">${esc(t.feedback)}</div>${t.feedbackPhoto?`<img src="${esc(t.feedbackPhoto)}" style="width:100%;border-radius:var(--r-xs);margin-top:8px;max-height:200px;object-fit:cover"/>`:''}<div class="fb-meta">${timeAgo(t.ts)}</div></div>`).join('');
 }
@@ -178,8 +178,9 @@ function renderGoalsTab(me) {
     const bizId = State.session?.bizId || State.biz?.id;
     if (!bizId) { showToast('No business ID — try logging out and back in'); return; }
     try {
-      const d = await API.business.update(bizId, { teamGoals });
-      State.biz = { ...State.biz, ...d.business };
+      await API.business.update(bizId, { teamGoals });
+      // Update State.biz directly with the local array — don't rely on API response
+      State.biz = { ...State.biz, teamGoals };
       showToast('Goals saved ✓');
     } catch(e) { showToast(e.message || 'Save failed'); }
   }
@@ -380,7 +381,19 @@ function renderBrandingTab(body,me){
   window._saveBr=async function(){
     const title=($('br-title')||{}).value?.trim()||'';
     const photo=photoData!==undefined?photoData:me.photo;
-    try{await API.staff.update(State.session?.bizId||State.biz?.id,me.id,{title,photo,links});const idx=State.staff.findIndex(s=>s.id===me.id);if(idx>=0)State.staff[idx]={...State.staff[idx],title,photo,links};showToast('Saved ✨');renderDashboard();}
+    const bizId=State.session?.bizId||State.biz?.id;
+    const staffId=me.id;
+    if(!bizId){showToast('No business ID — try logging out and back in');return;}
+    if(!staffId){showToast('No staff ID found');return;}
+    const payload={title,photo,links:[...links]};
+    try{
+      const d=await API.staff.update(bizId,staffId,payload);
+      const saved=d?.staff||payload;
+      const idx=State.staff.findIndex(s=>s.id===staffId);
+      if(idx>=0)State.staff[idx]={...State.staff[idx],...saved};
+      showToast('Saved ✨');
+      renderDashboard();
+    }
     catch(e){showToast(e.message||'Save failed');}
   };
 }
