@@ -30,6 +30,10 @@ function renderDashboard(){
         <div class="nav-icon">◎</div>
         <div>Preview</div>
       </div>
+      <div class="nav-item" onclick="window._saveLocation()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        <div>Save Location</div>
+      </div>
       <div class="nav-item" onclick="window._logout()">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <div>Sign Out</div>
@@ -57,7 +61,20 @@ function renderDashboard(){
       default:          body.innerHTML=`<div style="color:var(--gray);text-align:center;padding:40px">Coming soon</div>`;
     }
   };
-  window._logout=function(){API.auth.logout();State.session=null;State.biz=null;State.staff=[];State.taps=[];renderHome();};
+  window._logout=function(){
+    API.auth.logout();
+    State.session=null;
+    State.staff=[];
+    State.taps=[];
+    // Keep State.biz so role select shows the right business
+    renderRoleSelect();
+  };
+  window._saveLocation=function(){
+    if(State.biz) {
+      saveLocation(State.biz);
+      showToast('Location saved ✓');
+    }
+  };
   function _previewLinkRow(l,b){
     var url=l.url||'';
     if(l.type==='text')return`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px 18px;margin-bottom:10px"><div style="font-weight:700;font-size:14px">${esc(l.label)}</div>${l.sublabel?`<div style="font-size:12px;opacity:.5;margin-top:4px">${esc(l.sublabel)}</div>`:''}</div>`;
