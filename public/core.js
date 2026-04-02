@@ -82,27 +82,35 @@ function renderHome(){
   };
   window._ownerEntry=function(){State.biz=null;renderOwnerLogin();};
   window._sa=function(){
+    let saPin='';
     showModal(`<div class="modal-head"><div class="modal-title">Super Admin</div><button class="modal-close" onclick="closeModal()">×</button></div>
-      <div style="text-align:center;padding:8px 0">
-        <div style="font-size:18px;font-weight:800;margin-bottom:16px">Enter PIN</div>
-        <div class="pin-display" style="gap:10px">
-          <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
-          <div class="pin-dot" id="pd2"></div><div class="pin-dot" id="pd3"></div>
-          <div class="pin-dot" id="pd4"></div><div class="pin-dot" id="pd5"></div>
+      <div style="text-align:center;padding:12px 0 8px">
+        <div class="pin-display" id="sa-dots" style="justify-content:center;margin-bottom:20px">
+          ${[0,1,2,3,4,5].map(i=>`<div class="pin-dot" id="sapd${i}"></div>`).join('')}
         </div>
-        <div class="pin-grid">${['1','2','3','4','5','6','7','8','9','del','0','go'].map(k=>`<button class="pin-key${k==='del'||k==='go'?' del':''}" onclick="window._pin('${k}')" style="${k==='go'?'background:var(--green);color:var(--black);border-color:var(--green)':''}">${k==='del'?'⌫':k==='go'?'→':k}</button>`).join('')}</div>
+        <div class="pin-grid">${['1','2','3','4','5','6','7','8','9','del','0','go'].map(k=>`<button class="pin-key${k==='del'||k==='go'?' del':''}" onclick="window._saPin('${k}')" style="${k==='go'?'background:var(--brand);color:#000;font-weight:700':''}">
+          ${k==='del'?'⌫':k==='go'?'↵':k}</button>`).join('')}</div>
       </div>`);
-    let pin='';
-    window._pin=function(v){
-      if(v==='del'){pin=pin.slice(0,-1);}
-      else if(v==='go'){
-        if(pin.length<4){showToast('Enter at least 4 digits');return;}
+
+    function updateSaDots(){
+      for(let i=0;i<6;i++){
+        const d=document.getElementById('sapd'+i);
+        if(d)d.classList.toggle('filled',i<saPin.length);
+      }
+    }
+
+    window._saPin=function(v){
+      if(v==='del'){ saPin=saPin.slice(0,-1); updateSaDots(); return; }
+      if(v==='go'){
+        if(saPin.length<4){showToast('Enter at least 4 digits');return;}
         closeModal();showLoading('Authenticating…');
-        API.auth.loginSuperAdmin(pin).then(d=>{State.session=d;renderSuperAdminDashboard();}).catch(()=>{showToast('Invalid PIN');renderHome();});
+        API.auth.loginSuperAdmin(saPin)
+          .then(d=>{State.session=d;renderSuperAdminDashboard();})
+          .catch(e=>{showToast(e.message||'Invalid PIN');renderHome();});
         return;
       }
-      else if(pin.length<6){pin+=v;}
-      document.querySelectorAll('.pin-dot').forEach((d,i)=>d.classList.toggle('filled',i<pin.length));
+      if(saPin.length<6){saPin+=v;}
+      updateSaDots();
     };
   };
 }
