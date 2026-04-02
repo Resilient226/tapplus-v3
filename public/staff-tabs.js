@@ -177,12 +177,16 @@ function renderGoalsTab(me) {
   async function persistGoals(teamGoals) {
     const bizId = State.session?.bizId || State.biz?.id;
     if (!bizId) { showToast('No business ID — try logging out and back in'); return; }
+    console.log('[Goals] bizId:', bizId, 'session.bizId:', State.session?.bizId, 'biz.id:', State.biz?.id, 'role:', State.session?.role);
     try {
-      await API.business.update(bizId, { teamGoals });
-      // Update State.biz directly with the local array — don't rely on API response
+      const result = await API.business.update(bizId, { teamGoals });
+      console.log('[Goals] save result:', JSON.stringify(result).slice(0, 200));
       State.biz = { ...State.biz, teamGoals };
       showToast('Goals saved ✓');
-    } catch(e) { showToast(e.message || 'Save failed'); }
+    } catch(e) {
+      console.error('[Goals] save error:', e.message);
+      showToast(e.message || 'Save failed');
+    }
   }
 
   // ── Draw ────────────────────────────────────────────────────────────────
