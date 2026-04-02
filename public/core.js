@@ -9,6 +9,13 @@ const $    = (id) => document.getElementById(id);
 const esc  = (s) => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 let _tt;
+
+// ── Saved location (persists across sessions) ─────────────────────────────────
+const SAVED_BIZ_KEY = 'tp_saved_biz';
+function getSavedBiz() { try { const r=localStorage.getItem(SAVED_BIZ_KEY); return r?JSON.parse(r):null; } catch { return null; } }
+function saveLocation(biz) { try { localStorage.setItem(SAVED_BIZ_KEY, JSON.stringify({id:biz.id,name:biz.name,slug:biz.slug,storeCode:biz.storeCode,branding:biz.branding||{}})); } catch {} }
+function clearSavedBiz() { try { localStorage.removeItem(SAVED_BIZ_KEY); } catch {} }
+
 function showToast(msg,d=2500){const t=$('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),d);}
 function showModal(html){const b=$('modal-box'),o=$('modal-overlay');if(!b||!o)return;b.innerHTML=html;o.classList.add('open');}
 function closeModal(){const o=$('modal-overlay');if(o)o.classList.remove('open');}
@@ -48,6 +55,15 @@ async function route(){
   const parts=location.pathname.split('/').filter(Boolean);
   if(parts.length>=3&&parts[1]==='tap')return renderTapPage(parts[0],parts[2]);
   if(parts.length>=2&&parts[1]==='dashboard')return renderDashboardEntry(parts[0]);
+  // Check for saved location — skip code entry
+  const saved = getSavedBiz();
+  if(saved){
+    try {
+      const d = await API.business.getByCode(saved.storeCode);
+      State.biz = d.business;
+      return renderRoleSelect();
+    } catch { clearSavedBiz(); }
+  }
   return renderHome();
 }
 function navigate(path){history.pushState({},''  ,path);route();}
@@ -124,7 +140,8 @@ function renderRoleSelect(){
         ${biz.branding?.logoUrl
           ? `<img src="${esc(biz.branding.logoUrl)}" style="height:64px;max-width:160px;object-fit:contain;border-radius:14px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto"/>`
           : `<div style="font-size:24px;font-weight:600;letter-spacing:-.02em;margin-bottom:8px">${esc(biz.name)}</div>`}
-        <div style="font-size:15px;color:var(--lbl3)">Choose your role</div>
+        <div style="font-size:15px;color:var(--lbl3);margin-bottom:6px">Choose your role</div>
+        <button onclick="window._changeLocation()" style="background:none;border:none;color:var(--lbl3);font-size:13px;cursor:pointer;font-family:inherit;text-decoration:underline;padding:2px">Change location</button>
       </div>
       <div style="width:100%;max-width:340px">
         <div class="ios-group">
@@ -142,6 +159,7 @@ function renderRoleSelect(){
       </div>
     </div>`;
   window._role=function(r){r==='owner'?renderOwnerLogin():renderPinLogin(r);};
+  window._changeLocation=function(){clearSavedBiz();State.biz=null;renderHome();};
 }
 
 // ── PIN Login ─────────────────────────────────────────────────────────────────
