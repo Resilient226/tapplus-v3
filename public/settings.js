@@ -171,7 +171,7 @@ function renderSettingsTab(body) {
           <div><div class="field-lbl">Type</div><select class="sel" id="bl-t" onchange="window._blTog(this.value)"><option value="custom">🔗 Link</option><option value="text">📝 Text Only</option><option value="spotify">🎵 Spotify</option></select></div>
           <div><div class="field-lbl">Title</div><input class="inp" id="bl-l" placeholder="e.g. Happy Hour 4-6pm"/></div>
           <div id="bl-uw"><div class="field-lbl">URL</div><input class="inp" id="bl-u" placeholder="https://…"/></div>
-          <div><div class="field-lbl">Description (optional)</div><input class="inp" id="bl-s" placeholder="More details…"/></div>
+          <div><div class="field-lbl">Description (optional)</div><textarea class="inp" id="bl-s" placeholder="More details…" rows="4" style="resize:none;line-height:1.5"></textarea></div>
           <button class="btn btn-primary btn-full" onclick="window._doAddBull()">Add</button>
         </div>`);
       window._blTog=function(t){const w=$('bl-uw');if(w)w.style.display=t==='text'?'none':'block';};
