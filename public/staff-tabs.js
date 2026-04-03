@@ -211,14 +211,14 @@ function renderGoalsTab(me) {
             border:1px solid ${goalView==='team'?'rgba(0,229,160,.4)':'rgba(255,255,255,.1)'};
             background:${goalView==='team'?'rgba(0,229,160,.12)':'rgba(255,255,255,.04)'};
             color:${goalView==='team'?'var(--brand)':'rgba(238,240,248,.5)'}">
-          🏆 Team Goals
+          Team Goals
         </button>
         <button onclick="window._goalView('individual')"
           style="flex:1;padding:10px;border-radius:20px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;
             border:1px solid ${goalView==='individual'?'rgba(0,229,160,.4)':'rgba(255,255,255,.1)'};
             background:${goalView==='individual'?'rgba(0,229,160,.12)':'rgba(255,255,255,.04)'};
             color:${goalView==='individual'?'var(--brand)':'rgba(238,240,248,.5)'}">
-          👤 Individual Goals
+          Individual Goals
         </button>
       </div>
 
@@ -305,9 +305,8 @@ function renderGoalsTab(me) {
     return myGoals.map((g, i) => goalCard(g, i, me?.id || null, false)).join('');
   }
 
-  // Manager/Admin — full UI, rendered async via draw()
-  setTimeout(() => draw(), 0);
-  return '<div style="text-align:center;padding:40px"><div class="spinner" style="margin:0 auto"></div></div>';
+  // Coming soon
+  return '<div style="text-align:center;padding:60px 20px"><div style="font-size:40px;margin-bottom:16px">🎯</div><div style="font-size:18px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px">Goals</div><div style="font-size:14px;color:var(--lbl3)">Coming soon</div></div>';
 }
 
 
@@ -335,14 +334,14 @@ function renderBrandingTab(body,me){
   if(!me){body.innerHTML=`<div class="card" style="color:var(--lbl2);text-align:center">No staff profile</div>`;return;}
   const allowed=State.biz?.branding?.allowedStaffLinks||{};
   const types=Object.entries(allowed).filter(([,v])=>v).map(([k])=>k);
-  const LABELS={spotify:'🎵 Spotify',phone:'📞 Phone',email:'✉️ Email',instagram:'📸 Instagram',tiktok:'🎵 TikTok',custom:'🔗 Custom'};
+  const LABELS={spotify:'Spotify',phone:'Phone',email:'Email',instagram:'Instagram',tiktok:'TikTok',custom:'Custom'};
   let photoData=undefined,links=[...(me.links||[])];
   body.innerHTML=`<div class="plain-card">
-    <div style="font-weight:700;font-size:15px;margin-bottom:16px">✨ My Tap Page</div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:16px">My Tap Page</div>
     <div class="field-lbl">Profile Photo</div>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <div id="br-av">${staffAvatar(me,64)}</div>
-      <button onclick="window._pickPhoto()" class="btn btn-ghost btn-sm">📷 Upload</button>
+      <button onclick="window._pickPhoto()" class="btn btn-ghost btn-sm">Upload Photo</button>
     </div>
     <div class="field-lbl">My Title</div>
     <input class="inp" id="br-title" value="${esc(me.title||'')}" placeholder="Server, Bartender" style="margin-bottom:14px"/>
@@ -365,7 +364,31 @@ function renderBrandingTab(body,me){
     el.innerHTML=links.length?links.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;background:var(--sys-bg2);border:none;border-radius:var(--r-sm);padding:10px 12px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(l.label||l.type)}</div><div style="font-size:11px;color:var(--lbl2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div></div><button onclick="window._rmBrLink(${i})" style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:var(--red);cursor:pointer;font-family:inherit">✕</button></div>`).join(''):`<div style="font-size:12px;color:var(--lbl2);margin-bottom:8px">No links yet.</div>`;
   }
   renderLinks();
-  window._pickPhoto=function(){const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{photoData=ev.target.result;const a=$('br-av');if(a)a.innerHTML=`<img src="${ev.target.result}" style="width:64px;height:64px;border-radius:50%;object-fit:cover"/>`;};r.readAsDataURL(f);};i.click();};
+  window._pickPhoto=function(){
+    const i=document.createElement('input');i.type='file';i.accept='image/*';
+    i.onchange=e=>{
+      const f=e.target.files[0];if(!f)return;
+      // Compress image using canvas before storing
+      const img=new Image();
+      const objectUrl=URL.createObjectURL(f);
+      img.onload=function(){
+        const MAX=400; // max width/height px — keeps file tiny
+        let w=img.width,h=img.height;
+        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}
+        else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.7); // 70% quality JPEG
+        URL.revokeObjectURL(objectUrl);
+        photoData=compressed;
+        const a=$('br-av');
+        if(a)a.innerHTML=`<img src="${compressed}" style="width:64px;height:64px;border-radius:50%;object-fit:cover"/>`;
+      };
+      img.src=objectUrl;
+    };i.click();
+  };
   window._rmBrLink=function(i){links.splice(i,1);renderLinks();};
   window._addBrLink=function(){
     const type=($('br-ltype')||{}).value||'custom';
