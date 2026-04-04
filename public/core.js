@@ -23,6 +23,11 @@ document.addEventListener('click',e=>{if(e.target.id==='modal-overlay')closeModa
 function showLoading(msg=''){app().innerHTML=`<div class="page-center"><div class="spinner"></div>${msg?`<div style="margin-top:14px;color:var(--lbl3);font-size:14px;font-weight:400">${esc(msg)}</div>`:''}</div>`;}
 function showError(msg){app().innerHTML=`<div class="page-center"><div style="font-size:40px;margin-bottom:16px">⚠️</div><div style="font-weight:700;margin-bottom:8px">Something went wrong</div><div style="font-size:14px;color:var(--gray);margin-bottom:24px">${esc(msg)}</div><button class="btn btn-ghost" onclick="route()">Go Home</button></div>`;}
 
+function monogram(name, size=48, bg='var(--fill-thin)', color='var(--lbl)') {
+  const letter = (name||'?')[0].toUpperCase();
+  return `<div style="width:${size}px;height:${size}px;border-radius:${Math.round(size*.22)}px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*.42)}px;font-weight:600;color:${color};letter-spacing:-.02em;flex-shrink:0">${letter}</div>`;
+}
+
 function staffDisplay(s){return`${s.firstName} ${s.lastInitial}.`;}
 function staffIni(s){return(s.firstName[0]+(s.lastInitial||'')[0]||'').toUpperCase();}
 function staffAvatar(s,size=40){
@@ -51,7 +56,17 @@ function renderAIBlock(id,prompt,key){
 // ── Router ────────────────────────────────────────────────────────────────────
 async function route(){
   var ld=document.getElementById('loading');
-  if(ld){ld.classList.add('hidden');setTimeout(function(){ld.style.display='none';},350);}
+  // Minimum display time — let the ripple play for at least 3 seconds
+  const _loadStart = window._appLoadStart || Date.now();
+  const _elapsed = Date.now() - _loadStart;
+  const _minDisplay = 2500; // ms
+  const _remaining = Math.max(0, _minDisplay - _elapsed);
+  if(ld){
+    setTimeout(function(){
+      ld.classList.add('hidden');
+      setTimeout(function(){ld.style.display='none';},600);
+    }, _remaining);
+  }
   const parts=location.pathname.split('/').filter(Boolean);
   if(parts.length>=3&&parts[1]==='tap')return renderTapPage(parts[0],parts[2]);
   if(parts.length>=2&&parts[1]==='dashboard')return renderDashboardEntry(parts[0]);
@@ -79,16 +94,28 @@ function renderHome(){
       </div>
       <div style="font-size:15px;color:var(--lbl3);margin-bottom:48px;font-weight:400">Enter your store code</div>
       <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:12px">
-        <input class="inp" id="code-inp" placeholder="0000" type="number" inputmode="numeric" maxlength="4"
+        <input class="inp" id="code-inp" placeholder="" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]*"
           style="text-align:center;font-size:34px;font-weight:600;letter-spacing:.25em;padding:18px;border-radius:var(--r-lg);background:var(--sys-bg2)"
           onkeydown="if(event.key==='Enter')window._go()"/>
-        <button class="btn btn-primary btn-full" onclick="window._go()" style="font-size:17px;padding:16px;border-radius:var(--r-lg)">Continue</button>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" onclick="window._go()" style="flex:1;font-size:17px;padding:16px;border-radius:var(--r-lg)">Continue</button>
+          <button onclick="window._saveLocationHome()" style="background:var(--fill-thin);border:none;border-radius:var(--r-lg);padding:16px 14px;font-size:18px;cursor:pointer;flex-shrink:0" title="Save this location">📍</button>
+        </div>
         <button class="btn btn-ghost btn-full" onclick="window._ownerEntry()" style="font-size:16px;border-radius:var(--r-lg)">Business Login</button>
         <div style="text-align:center;margin-top:8px">
           <button onclick="window._sa()" style="background:none;border:none;color:rgba(255,255,255,.04);font-size:10px;cursor:pointer">●</button>
         </div>
       </div>
     </div>`;
+  window._saveLocationHome=function(){
+    const code=($('code-inp')?.value||'').trim();
+    if(!code){showToast('Enter your store code first');return;}
+    // Fetch biz then save
+    API.business.getByCode(code).then(d=>{
+      saveLocation(d.business);
+      showToast('📍 Location saved');
+    }).catch(()=>showToast('Invalid code'));
+  };
   window._go=async function(){
     const code=($('code-inp')?.value||'').trim();
     if(code.length!==4){showToast('Enter a 4-digit code');return;}
@@ -139,7 +166,7 @@ function renderRoleSelect(){
       <div style="margin-bottom:36px;text-align:center">
         ${biz.branding?.logoUrl
           ? `<img src="${esc(biz.branding.logoUrl)}" style="height:64px;max-width:160px;object-fit:contain;border-radius:14px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto"/>`
-          : `<div style="font-size:24px;font-weight:600;letter-spacing:-.02em;margin-bottom:8px">${esc(biz.name)}</div>`}
+          : `<div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px">${monogram(biz.name,56,'var(--fill-thin)','var(--lbl)')}<div style="font-size:20px;font-weight:600;letter-spacing:-.02em">${esc(biz.name)}</div></div>`}
         <div style="font-size:15px;color:var(--lbl3);margin-bottom:6px">Choose your role</div>
         <button onclick="window._changeLocation()" style="background:none;border:none;color:var(--lbl3);font-size:13px;cursor:pointer;font-family:inherit;text-decoration:underline;padding:2px">Change location</button>
       </div>
