@@ -94,20 +94,47 @@ html,body{
 /* ── Splash / Loading ───────────────────────────────────────────── */
 #loading{
   position:fixed;inset:0;background:#000;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  z-index:9999;gap:24px;transition:opacity .5s;
+  display:flex;align-items:center;justify-content:center;
+  z-index:9999;transition:opacity .6s;
 }
 #loading.hidden{opacity:0;pointer-events:none}
+
+.ripple-wrap{
+  position:relative;
+  width:260px;height:260px;
+  display:flex;align-items:center;justify-content:center;
+}
+
+.ripple{
+  position:absolute;
+  border-radius:50%;
+  border:1.5px solid var(--brand);
+  opacity:0;
+  animation:ripple 2.8s cubic-bezier(.2,.6,.4,1) infinite;
+}
+.r1{ width:120px;height:120px; animation-delay:0s; }
+.r2{ width:180px;height:180px; animation-delay:.7s; }
+.r3{ width:240px;height:240px; animation-delay:1.4s; }
+
+@keyframes ripple{
+  0%  { transform:scale(.4); opacity:.6; }
+  100%{ transform:scale(1);  opacity:0;  }
+}
+
+.load-logo-wrap{
+  position:relative;z-index:2;
+  text-align:center;
+}
 .load-logo{
-  font-size:56px;font-weight:700;letter-spacing:-.04em;
+  font-size:52px;font-weight:700;letter-spacing:-.05em;
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;
+  line-height:1;
+  color:#fff;
 }
 .load-logo span{color:var(--brand)}
-.load-spinner{
-  width:24px;height:24px;
-  border:2px solid rgba(255,255,255,.15);
-  border-top-color:var(--brand);
-  border-radius:50%;animation:spin .7s linear infinite;
+
+@media(prefers-reduced-motion:reduce){
+  .ripple{animation:none;opacity:0}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -394,8 +421,16 @@ html,body{
 </head>
 <body>
 <div id="loading">
-  <div class="load-logo">Tap<span>+</span></div>
-  <div class="load-spinner"></div>
+  <!-- Ripple rings -->
+  <div class="ripple-wrap">
+    <div class="ripple r1"></div>
+    <div class="ripple r2"></div>
+    <div class="ripple r3"></div>
+    <!-- Logo -->
+    <div class="load-logo-wrap">
+      <div class="load-logo">Tap<span>+</span></div>
+    </div>
+  </div>
 </div>
 <div id="app"></div>
 <div id="toast"></div>
