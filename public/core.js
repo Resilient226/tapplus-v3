@@ -166,7 +166,7 @@ function renderRoleSelect(){
       <div style="margin-bottom:36px;text-align:center">
         ${biz.branding?.logoUrl
           ? `<img src="${esc(biz.branding.logoUrl)}" style="height:64px;max-width:160px;object-fit:contain;border-radius:14px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto"/>`
-          : `<div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px">${monogram(biz.name,56,'var(--fill-thin)','var(--lbl)')}<div style="font-size:20px;font-weight:600;letter-spacing:-.02em">${esc(biz.name)}</div></div>`}
+          : `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:8px"><img src="${window._tapPlusLogo||''}" style="height:36px;display:block"/><div style="font-size:18px;font-weight:500;letter-spacing:-.02em;color:var(--lbl2)">${esc(biz.name)}</div></div>`}
         <div style="font-size:15px;color:var(--lbl3);margin-bottom:6px">Choose your role</div>
         <button onclick="window._changeLocation()" style="background:none;border:none;color:var(--lbl3);font-size:13px;cursor:pointer;font-family:inherit;text-decoration:underline;padding:2px">Change location</button>
       </div>
