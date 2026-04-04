@@ -4,7 +4,7 @@ function renderDashboard(){
   const me=role==='staff'?staff.find(s=>s.id===sess?.staffId):null;
   const defaults={staff:['coaching','feedback','goals','stats','branding'],manager:['ai','analytics','team','staff','goals','estimator','branding2'],bizAdmin:['ai','analytics','team','staff','goals','branding2']};
   const sections=layout?.[role]||defaults[role]||defaults.staff;
-  const LABELS={coaching:'🤖 Coaching',feedback:'💬 Feedback',goals:'🎯 Goals',stats:'📊 Stats',branding:'✨ Branding',ai:'🤖 AI Insights',team:'🏆 Team',staff:'👥 Staff',links:'🔗 Links',estimator:'📈 Estimator',settings:'⚙️ Settings',branding2:'🎨 Branding',analytics:'📈 Analytics',analytics:'📈 Analytics'};
+  const LABELS={coaching:'Coaching',feedback:'Feedback',goals:'Goals',stats:'Stats',branding:'Branding',ai:'AI Insights',team:'Team',staff:'Staff',links:'Links',estimator:'Estimator',settings:'Settings',branding2:'Branding',analytics:'Analytics',analytics:'Analytics'};
   let active=sections[0];
 
   app().innerHTML=`
@@ -13,7 +13,7 @@ function renderDashboard(){
         <div style="min-width:0;flex:1">
           ${biz.branding?.logoUrl
             ? `<img src="${esc(biz.branding.logoUrl)}" style="height:28px;max-width:120px;object-fit:contain;border-radius:6px;display:block"/>`
-            : `<div style="font-size:18px;font-weight:600;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(biz.name)}</div>`}
+            : `<div style="display:flex;align-items:center;gap:10px"><img src="${window._tapPlusLogo||''}" style="height:22px;opacity:.9;display:block"/><div style="font-size:14px;font-weight:500;color:var(--lbl2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(biz.name)}</div></div>`}
           <div style="font-size:12px;color:var(--lbl3);margin-top:2px;font-weight:400">${role==='staff'&&me?esc(staffDisplay(me)):({staff:'Staff',manager:'Manager',bizAdmin:'Admin',superAdmin:'Super Admin'}[role]||role)}</div>
         </div>
         <button onclick="window._logout()" style="background:var(--fill-ultra);border:none;border-radius:var(--r-sm);padding:7px 14px;color:var(--lbl2);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:12px">Sign Out</button>
@@ -29,10 +29,6 @@ function renderDashboard(){
       <div class="nav-item" onclick="window._preview()">
         <div class="nav-icon">◎</div>
         <div>Preview</div>
-      </div>
-      <div class="nav-item" onclick="window._saveLocation()">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-        <div>Save Location</div>
       </div>
       <div class="nav-item" onclick="window._logout()">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
