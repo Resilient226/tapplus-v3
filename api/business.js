@@ -184,7 +184,7 @@ module.exports = async function handler(req, res) {
     // Managers can only update teamGoals
     // bizAdmin+ can update everything
     const allowed = isBizAdmin
-      ? ['name', 'branding', 'links', 'teamGoals', 'platformLinks', 'reviewLinks']
+      ? ['name', 'branding', 'links', 'teamGoals', 'platformLinks', 'reviewLinks', 'shifts']
       : ['teamGoals'];
 
     for (const key of allowed) {
@@ -227,4 +227,3 @@ module.exports = async function handler(req, res) {
   }
 
   return err(res, 'Method not allowed', 405);
-};
