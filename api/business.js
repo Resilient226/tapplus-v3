@@ -84,8 +84,10 @@ module.exports = async function handler(req, res) {
       if (guard) return err(res, guard.error, guard.status);
 
       try {
-        const snap = await db.collection(COL).orderBy('createdAt', 'desc').get();
-        const businesses = snap.docs.map(d => sanitize(d.id, d.data()));
+        const snap = await db.collection(COL).get();
+        const businesses = snap.docs
+          .map(d => sanitize(d.id, d.data()))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return ok(res, { businesses });
       } catch (e) {
         console.error('Business listAll error:', e.message);
@@ -227,3 +229,4 @@ module.exports = async function handler(req, res) {
   }
 
   return err(res, 'Method not allowed', 405);
+};
