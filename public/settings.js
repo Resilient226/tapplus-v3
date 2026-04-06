@@ -114,7 +114,15 @@ function renderSettingsTab(body) {
         <div class="field-lbl">New Manager PIN (4-6 digits)</div>
         <input class="inp" id="s-mgrpin" type="number" inputmode="numeric" placeholder="Leave blank to keep" style="margin-bottom:12px"/>
         <button onclick="window._savePins()" class="btn btn-ghost btn-full">Update PINs</button>
-      </div>`;
+      </div>
+
+      ${role==='bizAdmin'||role==='owner'?`
+      <div style="margin-top:20px;padding-top:20px;border-top:.5px solid var(--sep)">
+        <div style="font-weight:600;font-size:15px;margin-bottom:4px">Shift Schedule</div>
+        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Define your recurring daily shifts</div>
+        <div id="s-shifts-list" style="margin-bottom:10px"></div>
+        <button onclick="window._addShift()" class="btn btn-ghost btn-full">+ Add Shift</button>
+      </div>`:''}`;
 
     // ── Bulletin board list ─────────────────────────────────────────────────
     function drawBulletin(){
@@ -276,32 +284,112 @@ function renderSettingsTab(body) {
       };
     };
 
+    // ── Shifts list ───────────────────────────────────────────────────────────
+    function drawShiftsList(){
+      if(!(role==='bizAdmin'||role==='owner')) return;
+      const el = document.getElementById('s-shifts-list'); if(!el) return;
+      const shifts = State.biz?.shifts || [];
+      el.innerHTML = shifts.length
+        ? shifts.map((sh,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;background:var(--sys-bg2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:8px">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">${esc(sh.name)}</div>
+              <div style="font-size:12px;color:var(--lbl3);margin-top:2px">${esc(sh.start)} – ${esc(sh.end)}</div>
+            </div>
+            <button onclick="window._rmShift('${sh.id}')" style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:var(--r-xs);padding:5px 10px;font-size:12px;font-weight:600;color:var(--red);cursor:pointer;font-family:inherit">Remove</button>
+          </div>`).join('')
+        : `<div style="font-size:13px;color:var(--lbl3);margin-bottom:8px">No shifts yet.</div>`;
+    }
+    drawShiftsList();
+
+    window._rmShift = async function(id){
+      const shifts = (State.biz?.shifts||[]).filter(s=>s.id!==id);
+      const bizId = State.session?.bizId||State.biz?.id;
+      try {
+        await API.business.update(bizId, { shifts });
+        State.biz = {...State.biz, shifts};
+        drawShiftsList();
+        showToast('Shift removed');
+      } catch(e){ showToast(e.message||'Failed'); }
+    };
+
+    window._addShift = function(){
+      showModal(`
+        <div class="modal-head"><div class="modal-title">Add Shift</div><button class="modal-close" onclick="closeModal()">×</button></div>
+        <div style="display:flex;flex-direction:column;gap:14px;padding:0 20px 24px">
+          <div>
+            <div class="field-lbl">Shift Name</div>
+            <input class="inp" id="sh-name" placeholder="e.g. Morning, Lunch, Dinner"/>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <div class="field-lbl">Start Time</div>
+              <input class="inp" id="sh-start" type="time" value="08:00"/>
+            </div>
+            <div>
+              <div class="field-lbl">End Time</div>
+              <input class="inp" id="sh-end" type="time" value="16:00"/>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._saveShift()">Add Shift</button>
+        </div>`);
+
+      window._saveShift = async function(){
+        const name  = document.getElementById('sh-name')?.value?.trim();
+        const start = document.getElementById('sh-start')?.value;
+        const end   = document.getElementById('sh-end')?.value;
+        if(!name){ showToast('Enter a shift name'); return; }
+        if(!start||!end){ showToast('Set start and end times'); return; }
+        const newShift = { id: Date.now().toString(36), name, start, end };
+        const shifts = [...(State.biz?.shifts||[]), newShift];
+        const bizId = State.session?.bizId||State.biz?.id;
+        try {
+          await API.business.update(bizId, { shifts });
+          State.biz = {...State.biz, shifts};
+          closeModal();
+          drawShiftsList();
+          showToast('Shift added');
+        } catch(e){ showToast(e.message||'Failed'); }
+      };
+    };
+
     // Logo upload
     window._pickLogo=function(){
       const i=document.createElement('input');i.type='file';i.accept='image/*';
       i.onchange=e=>{
         const f=e.target.files[0];if(!f)return;
-        const img=new Image();
-        const objectUrl=URL.createObjectURL(f);
-        img.onload=function(){
-          const MAX=600;
-          let w=img.width,h=img.height;
-          if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}
-          else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
-          const canvas=document.createElement('canvas');
-          canvas.width=w;canvas.height=h;
-          canvas.getContext('2d').drawImage(img,0,0,w,h);
-          const compressed=canvas.toDataURL('image/jpeg',0.8);
-          URL.revokeObjectURL(objectUrl);
-          window._logoData=compressed;
-          const li=$('s-logo');if(li)li.value='';
-          let p=$('s-logo-prev');
-          if(!p){p=document.createElement('img');p.id='s-logo-prev';
-            p.style='height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
-            $('s-logo').parentNode.insertAdjacentElement('afterend',p);}
-          p.src=compressed;
+        const reader=new FileReader();
+        reader.onload=function(ev){
+          const dataUrl=ev.target.result;
+          const img=new Image();
+          img.onload=function(){
+            const MAX=600;
+            let w=img.width,h=img.height;
+            if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+            if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+            const canvas=document.createElement('canvas');
+            canvas.width=w;canvas.height=h;
+            canvas.getContext('2d').drawImage(img,0,0,w,h);
+            const compressed=canvas.toDataURL('image/jpeg',0.82);
+            window._logoData=compressed;
+            const li=$('s-logo');if(li)li.value='';
+            let p=$('s-logo-prev');
+            if(!p){p=document.createElement('img');p.id='s-logo-prev';
+              p.style='height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
+              $('s-logo').parentNode.insertAdjacentElement('afterend',p);}
+            p.src=compressed;
+          };
+          img.onerror=function(){
+            window._logoData=dataUrl;
+            let p=$('s-logo-prev');
+            if(!p){p=document.createElement('img');p.id='s-logo-prev';
+              p.style='height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
+              $('s-logo').parentNode.insertAdjacentElement('afterend',p);}
+            p.src=dataUrl;
+          };
+          img.src=dataUrl;
         };
-        img.src=objectUrl;
+        reader.readAsDataURL(f);
       };i.click();
     };
   }
