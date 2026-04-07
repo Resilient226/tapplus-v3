@@ -101,34 +101,38 @@ html,body{
 
 /* Pond scene — logo floats above, ripples expand from below it */
 .pond-scene{
-  display:flex;flex-direction:column;align-items:center;
+  position:relative;
+  width:380px;height:210px;
+  display:flex;align-items:center;justify-content:center;
 }
 .pond-logo{
-  position:relative;z-index:2;
-  margin-bottom:2px;
-  filter:drop-shadow(0 6px 20px rgba(0,0,0,.7));
+  position:absolute;
+  z-index:10;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  filter:drop-shadow(0 4px 16px rgba(0,0,0,.8));
 }
 .pond-water{
   position:relative;
-  width:340px;height:170px;
-  display:flex;align-items:flex-start;justify-content:center;
-  perspective:480px;
+  width:380px;height:210px;
+  display:flex;align-items:center;justify-content:center;
 }
 .wave{
-  position:absolute;top:0;
+  position:absolute;
   border-radius:50%;opacity:0;
-  animation:pondRipple 4.5s cubic-bezier(.05,.6,.2,1) infinite;
+  animation:cardRipple 4.5s cubic-bezier(.05,.6,.2,1) infinite;
 }
-.w1{ width:28px; height:11px; border:2px solid rgba(0,229,160,.95);  animation-delay:0s;    box-shadow:0 0 8px rgba(0,229,160,.5);}
-.w2{ width:75px; height:30px; border:1.5px solid rgba(0,229,160,.7); animation-delay:.72s; }
-.w3{ width:145px;height:58px; border:1px solid rgba(0,229,160,.45);  animation-delay:1.44s;}
-.w4{ width:235px;height:94px; border:1px solid rgba(0,229,160,.22);  animation-delay:2.16s;}
-.w5{ width:334px;height:134px;border:.5px solid rgba(0,229,160,.09); animation-delay:2.88s;}
-@keyframes pondRipple{
-  0%  {transform:rotateX(62deg) scale(.04);opacity:1}
-  15% {opacity:.85}
-  65% {opacity:.28}
-  100%{transform:rotateX(62deg) scale(1);opacity:0}
+/* Flat oval rings — same proportions as card front design */
+.w1{ width:40px;  height:22px;  border:2px solid rgba(0,229,160,.95);  animation-delay:0s;    box-shadow:0 0 10px rgba(0,229,160,.5);}
+.w2{ width:100px; height:55px;  border:1.5px solid rgba(0,229,160,.72); animation-delay:.75s; }
+.w3{ width:185px; height:102px; border:1px solid rgba(0,229,160,.48);   animation-delay:1.5s; }
+.w4{ width:280px; height:154px; border:1px solid rgba(0,229,160,.24);   animation-delay:2.25s;}
+.w5{ width:370px; height:204px; border:.5px solid rgba(0,229,160,.10);  animation-delay:3s;   }
+@keyframes cardRipple{
+  0%  {transform:scale(.04); opacity:1}
+  15% {opacity:.9}
+  65% {opacity:.3}
+  100%{transform:scale(1);   opacity:0}
 }
 @media(prefers-reduced-motion:reduce){.wave{animation:none;opacity:0}}
 @keyframes spin{to{transform:rotate(360deg)}}
