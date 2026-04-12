@@ -39,7 +39,14 @@ async function renderTapPage(bizSlug, staffSlug) {
 
   function linkRow(l) {
     const url = l.url || l.href || '';
-    if (l.type === 'text') return `<div style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:18px 22px;margin-bottom:12px"><div style="font-weight:700;font-size:15px;letter-spacing:-.01em">${esc(l.label)}</div>${l.sublabel?`<div style="font-size:13px;opacity:.45;margin-top:5px;white-space:pre-wrap">${esc(l.sublabel)}</div>`:''}</div>`;
+    if (l.type === 'text') return `<div style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:20px;overflow:hidden;margin-bottom:12px">
+      ${l.image?`<img src="${esc(l.image)}" style="width:100%;max-height:200px;object-fit:cover;display:block"/>`:``}
+      <div style="padding:18px 22px">
+        <div style="font-weight:700;font-size:16px;letter-spacing:-.01em;margin-bottom:${l.html||l.sublabel?'10':'0'}px">${esc(l.label)}</div>
+        ${l.html?`<div style="font-size:14px;line-height:1.65;color:rgba(255,255,255,.75)">${l.html}</div>`:
+          l.sublabel?`<div style="font-size:14px;opacity:.6;white-space:pre-wrap;line-height:1.6">${esc(l.sublabel)}</div>`:''}
+      </div>
+    </div>`;
     if (l.type === 'spotify') { const m=url.match(/spotify\.com\/(track|playlist|album|episode)\/([a-zA-Z0-9]+)/); if(m)return`<div style="width:100%;border-radius:16px;overflow:hidden;margin-bottom:12px"><iframe src="https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0" width="100%" height="80" frameborder="0" allow="autoplay;clipboard-write;encrypted-media;fullscreen;picture-in-picture" style="border-radius:16px;display:block"></iframe></div>`; }
     const ytId = (url.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/) || url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/))?.[1];
     if (ytId) return `<div style="width:100%;border-radius:16px;overflow:hidden;margin-bottom:12px;position:relative;padding-top:56.25%"><iframe src="https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1" frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;display:block"></iframe></div>`;
@@ -64,9 +71,9 @@ async function renderTapPage(bizSlug, staffSlug) {
     const el = $('after'); if (!el) return;
     if (r === 5) {
       const primary = reviewLinks[0];
-      el.innerHTML = `<div style="text-align:center;padding:32px 0 24px;animation:fadeUp .4s ease"><div style="font-size:52px;margin-bottom:18px">🙏</div><div style="font-size:22px;font-weight:900;letter-spacing:-.02em;margin-bottom:10px">${esc(b.thankYouMsg||'Thank you!')}</div>${primary?`<div style="font-size:14px;color:rgba(255,255,255,.35);font-weight:500">Taking you to ${esc(primary.label||primary.platform)}…</div>`:''}</div>`;
+      el.innerHTML = `<div style="text-align:center;padding:32px 0 24px;animation:fadeUp .4s ease"><div style="font-size:22px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px">${esc(b.thankYouMsg||'Thank you!')}</div>${primary?`<div style="font-size:14px;color:rgba(255,255,255,.35);font-weight:500">Redirecting to ${esc(primary.label||primary.platform)}…</div>`:''}</div>`;
       if (tapId) API.taps.update(tapId, {rating:r, status:'rated'}).catch(console.error);
-      if (primary) setTimeout(() => { window.location.href = primary.url; }, 1800);
+      if (primary) setTimeout(() => { window.location.href = primary.url; }, 1500);
     } else if (r === 4) {
       const lh = reviewLinks.length ? reviewLinks.map(l=>linkRow(l)).join('') : `<div style="padding:20px;text-align:center;color:rgba(255,255,255,.3);font-size:14px">No review links configured</div>`;
       el.innerHTML = `<div style="text-align:center;margin-bottom:24px;animation:fadeUp .3s ease"><div style="font-size:20px;font-weight:800;letter-spacing:-.02em">${esc(b.reviewPrompt||'Share your experience!')}</div></div>${lh}`;
@@ -76,7 +83,7 @@ async function renderTapPage(bizSlug, staffSlug) {
       window._fb = async function(rating) {
         const text = $('fb-t')?.value?.trim()||'';
         if (tapId) await API.taps.update(tapId, {rating, feedback:text, status:'rated'}).catch(console.error);
-        el.innerHTML = `<div style="text-align:center;padding:32px 0;animation:fadeUp .4s ease"><div style="font-size:52px;margin-bottom:18px">🙏</div><div style="font-size:22px;font-weight:900;letter-spacing:-.02em">${esc(b.thankYouMsg||'Thank you for your feedback!')}</div></div>`;
+        el.innerHTML = `<div style="text-align:center;padding:32px 0;animation:fadeUp .4s ease"><div style="font-size:14px;font-weight:500;color:rgba(255,255,255,.4);margin-bottom:16px;letter-spacing:.06em;text-transform:uppercase">Thank you</div><div style="font-size:22px;font-weight:900;letter-spacing:-.02em">${esc(b.thankYouMsg||'Thank you for your feedback!')}</div></div>`;
       };
     }
   }
@@ -100,7 +107,7 @@ async function renderTapPage(bizSlug, staffSlug) {
     <div style="position:relative;padding:36px 24px 60px;max-width:440px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;align-items:center">
       ${staffBubbleHTML}
       <div style="margin-top:24px;margin-bottom:40px;text-align:center;width:100%;animation:fadeUp .4s ease">
-        ${b.logoUrl?`<img src="${esc(b.logoUrl)}" style="height:88px;max-width:240px;object-fit:contain;border-radius:18px"/>`:`<div style="font-size:30px;font-weight:900;letter-spacing:-.03em">${esc(b.name)}</div>`}
+        ${b.logoUrl?`<img src="${esc(b.logoUrl)}" style="height:88px;max-width:240px;object-fit:contain;border-radius:18px"/>`:`<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:72px;height:72px;border-radius:18px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:600;color:${esc(textColor)}">${(b.name||"?")[0].toUpperCase()}</div><div style="font-size:22px;font-weight:700;letter-spacing:-.02em">${esc(b.name)}</div></div>`}
         ${b.tagline?`<div style="font-size:14px;opacity:.35;margin-top:10px;font-weight:500">${esc(b.tagline)}</div>`:''}
       </div>
       <div style="text-align:center;width:100%;margin-bottom:40px;animation:fadeUp .45s ease">
