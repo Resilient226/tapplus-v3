@@ -1,21 +1,355 @@
-function renderOwnerDashboard(){
-  const sess=State.session,bizs=sess?.businesses||[];
-  app().innerHTML=`
-    <div style="max-width:480px;margin:0 auto;padding:20px 16px 80px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-top:8px">
-        <div style="font-size:22px;font-weight:700">Tap<span style="color:var(--brand)">+</span> Owner</div>
-        <button onclick="API.auth.logout();renderHome()" style="background:rgba(255,255,255,.06);border:none;border-radius:var(--r-xs);padding:6px 12px;color:var(--lbl2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Sign Out</button>
+async function renderOwnerDashboard(){
+  const sess=State.session;
+  const bizIds=sess?.businesses||[];
+  let active='locations';
+
+  // Load all business data
+  showLoading('Loading…');
+  let bizList=[];
+  try{
+    const results=await Promise.allSettled(bizIds.map(id=>API.business.getById(id)));
+    bizList=results.filter(r=>r.status==='fulfilled').map(r=>r.value.business);
+  }catch(e){}
+
+  // Load taps for all locations
+  let allTaps=[];
+  try{
+    const tapResults=await Promise.allSettled(bizList.map(b=>API.taps.list({bizId:b.id})));
+    tapResults.forEach((r,i)=>{
+      if(r.status==='fulfilled')(r.value.taps||[]).forEach(t=>allTaps.push({...t,bizId:bizList[i]?.id,bizName:bizList[i]?.name}));
+    });
+  }catch(e){}
+
+  // Compute rollup stats
+  const totalTaps=allTaps.length;
+  const fiveStarTaps=allTaps.filter(t=>t.rating===5).length;
+  const avgRating=allTaps.length?
+    (allTaps.reduce((s,t)=>s+(t.rating||0),0)/allTaps.length).toFixed(1):
+    '—';
+  const totalLocations=bizList.length;
+
+  function render(){
+    app().innerHTML=`
+      <div style="max-width:480px;margin:0 auto;padding:16px 16px 96px">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;padding-top:max(8px,env(safe-area-inset-top,0px))">
+          <div>
+            <div style="font-size:24px;font-weight:700;letter-spacing:-.04em">Owner Portal</div>
+            <div style="font-size:13px;color:var(--lbl3);margin-top:3px">${totalLocations} location${totalLocations!==1?'s':''}</div>
+          </div>
+          <button onclick="API.auth.logout();State.session=null;State.biz=null;renderHome()"
+            style="background:var(--fill);border:none;border-radius:100px;padding:7px 16px;
+                   color:var(--lbl2);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
+            Sign Out
+          </button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          ${['locations','analytics','billing'].map(t=>`
+            <button class="tab${t===active?' active':''}" onclick="window._ownerTab('${t}')"
+              id="ot-${t}" style="text-transform:capitalize">${t}</button>`).join('')}
+        </div>
+
+        <div id="owner-body" class="fade-up"></div>
       </div>
-      ${bizs.length===0?`<div class="card" style="text-align:center;padding:40px"><div style="font-size:32px;margin-bottom:12px">🏪</div><div style="font-weight:700;margin-bottom:8px">No businesses yet</div><div style="font-size:13px;color:var(--lbl2);margin-bottom:20px">Create your first location</div><button class="btn btn-primary" onclick="renderCreateBusiness('${esc(sess.token)}')">Create Business</button></div>`:`
-        <div class="sec-lbl">Your Locations</div>
-        ${bizs.map(b=>`<div class="plain-card" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="window._openBiz('${b.id}')"><div style="width:44px;height:44px;border-radius:var(--r-sm);background:var(--green-dim);display:flex;align-items:center;justify-content:center;font-size:20px">🏪</div><div style="flex:1"><div style="font-weight:700">${esc(b.name)}</div><div style="font-size:12px;color:var(--lbl2)">${esc(b.slug)}</div></div><div style="color:var(--lbl2);font-size:18px">›</div></div>`).join('')}
-        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="renderCreateBusiness('${esc(sess.token)}')">+ Add Location</button>`}
-    </div>`;
-  window._openBiz=async function(id){
-    showLoading();
-    try{const d=await API.business.getById(id);State.biz=d.business;State.session={...sess,bizId:id,role:'bizAdmin'};await loadDashboardData();renderDashboard();}
-    catch(e){showError(e.message);}
+
+      <!-- Nav bar -->
+      <div class="nav-bar">
+        <div class="nav-item active">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2" opacity=".5"/><rect x="3" y="14" width="7" height="7" rx="2" opacity=".5"/><rect x="14" y="14" width="7" height="7" rx="2" opacity=".3"/></svg>
+          <div>Locations</div>
+        </div>
+        <div class="nav-item" onclick="window._ownerTab('billing')">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <div>Billing</div>
+        </div>
+        <div class="nav-item" onclick="API.auth.logout();State.session=null;renderHome()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <div>Sign Out</div>
+        </div>
+      </div>`;
+
+    window._ownerTab=function(t){
+      active=t;
+      ['locations','analytics','billing'].forEach(x=>{
+        const b=$('ot-'+x);
+        if(b)b.className='tab'+(x===t?' active':'');
+      });
+      const body=$('owner-body');
+      if(!body)return;
+      body.classList.remove('fade-up');void body.offsetWidth;body.classList.add('fade-up');
+      if(t==='locations')_ownerLocations(body);
+      else if(t==='analytics')_ownerAnalytics(body);
+      else _ownerBilling(body);
+    };
+
+    window._ownerTab('locations');
+  }
+
+  // ── Locations tab ───────────────────────────────────────────────────────
+  window._ownerLocations=function(body){
+    if(bizList.length===0){
+      body.innerHTML=`
+        <div class="card" style="text-align:center;padding:48px 24px">
+          <div style="font-size:40px;margin-bottom:16px">🏪</div>
+          <div style="font-size:18px;font-weight:600;margin-bottom:8px">No locations yet</div>
+          <div style="font-size:14px;color:var(--lbl3);margin-bottom:24px">Create your first location to get started</div>
+          <button class="btn btn-primary" onclick="renderCreateBusiness('${esc(sess.token||'')}')">Create Location</button>
+        </div>`;
+      return;
+    }
+
+    body.innerHTML=`
+      <div class="sec-lbl">Your Locations</div>
+      ${bizList.map(b=>{
+        const bTaps=allTaps.filter(t=>t.bizId===b.id);
+        const bAvg=bTaps.length?(bTaps.reduce((s,t)=>s+(t.rating||0),0)/bTaps.length).toFixed(1):'—';
+        const bFive=bTaps.filter(t=>t.rating===5).length;
+        const isActive=b.subscriptionStatus==='active';
+        return`
+        <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+            <div style="width:44px;height:44px;border-radius:var(--r-md);background:var(--brand)14;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">
+              ${b.branding?.logoUrl?`<img src="${esc(b.branding.logoUrl)}" style="width:100%;height:100%;border-radius:var(--r-md);object-fit:cover"/>`:'🏪'}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>
+              <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
+                Code: <span style="color:var(--brand);font-weight:600">${esc(b.storeCode)}</span>
+                <span style="margin-left:8px;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600;background:${isActive?'rgba(0,229,160,.15)':'rgba(255,77,106,.1)'};color:${isActive?'var(--brand)':'var(--ios-red)'}">${isActive?'Active':'Inactive'}</span>
+              </div>
+            </div>
+          </div>
+          <!-- Mini stats -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+            ${[
+              [bTaps.length,'Taps','var(--brand)'],
+              [bAvg+'★','Rating','var(--ios-yellow)'],
+              [bFive,'5-Stars','var(--a-blue)']
+            ].map(([v,l,c])=>`
+              <div style="background:var(--bg3);border-radius:10px;padding:10px 8px;text-align:center">
+                <div style="font-size:18px;font-weight:700;color:${c};letter-spacing:-.02em">${v}</div>
+                <div style="font-size:10px;color:var(--lbl3);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">${l}</div>
+              </div>`).join('')}
+          </div>
+          <!-- Actions -->
+          <div style="display:flex;gap:8px">
+            <button onclick="window._ownerOpenBiz('${b.id}')"
+              style="flex:1;background:var(--brand);border:none;border-radius:var(--r-sm);padding:10px;
+                     color:#000;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              Manage
+            </button>
+            <button onclick="window._ownerChangePins('${b.id}','${esc(b.name)}')"
+              style="background:var(--fill);border:none;border-radius:var(--r-sm);padding:10px 16px;
+                     color:var(--lbl2);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
+              PINs
+            </button>
+          </div>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-ghost btn-full" onclick="renderCreateBusiness('${esc(sess.token||'')}')"
+        style="border-radius:var(--r-lg);margin-top:4px">
+        + Add Location
+      </button>`;
   };
+
+  // ── Analytics tab ───────────────────────────────────────────────────────
+  window._ownerAnalytics=function(body){
+    // Rollup stats
+    const statTiles=[
+      [totalTaps,'Total Taps','var(--brand)','rgba(0,229,160,.12)'],
+      [avgRating+'★','Avg Rating','var(--ios-yellow)','rgba(255,214,10,.1)'],
+      [fiveStarTaps,'5-Star Taps','var(--a-blue)','rgba(59,158,255,.1)'],
+      [totalLocations,'Locations','var(--a-purple)','rgba(155,89,255,.1)'],
+    ];
+
+    // Per-location breakdown
+    const locationRows=bizList.map(b=>{
+      const bTaps=allTaps.filter(t=>t.bizId===b.id);
+      const bAvg=bTaps.length?(bTaps.reduce((s,t)=>s+(t.rating||0),0)/bTaps.length).toFixed(1):'—';
+      const bFive=bTaps.filter(t=>t.rating===5).length;
+      return{name:b.name,taps:bTaps.length,avg:bAvg,five:bFive};
+    }).sort((a,b)=>b.taps-a.taps);
+
+    body.innerHTML=`
+      <div class="stat-grid">
+        ${statTiles.map(([v,l,c,bg])=>`
+          <div style="background:${bg};border-radius:var(--r-lg);padding:18px 14px">
+            <div style="font-size:32px;font-weight:800;color:${c};line-height:1;letter-spacing:-.04em">${v}</div>
+            <div style="font-size:11px;font-weight:500;color:${c};opacity:.7;margin-top:6px;text-transform:uppercase;letter-spacing:.04em">${l}</div>
+          </div>`).join('')}
+      </div>
+
+      ${locationRows.length>1?`
+      <div class="sec-lbl" style="margin-top:8px">By Location</div>
+      <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden">
+        ${locationRows.map((r,i)=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<locationRows.length-1?'.5px solid var(--sep)':'none'}">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</div>
+              <div style="font-size:12px;color:var(--lbl3);margin-top:1px">${r.avg}★ avg · ${r.five} five-stars</div>
+            </div>
+            <div style="font-size:18px;font-weight:700;color:var(--brand)">${r.taps}</div>
+          </div>`).join('')}
+      </div>`:''}
+
+      ${totalTaps===0?`
+      <div style="text-align:center;padding:40px 0;color:var(--lbl3)">
+        <div style="font-size:32px;margin-bottom:12px">📊</div>
+        <div style="font-size:15px">No taps yet.<br/>Share your staff cards to start collecting reviews.</div>
+      </div>`:''}`;
+  };
+
+  // ── Billing tab ──────────────────────────────────────────────────────────
+  window._ownerBilling=function(body){
+    const firstBiz=bizList[0];
+    const plan=firstBiz?.plan||'monthly';
+    const status=firstBiz?.subscriptionStatus||'inactive';
+    const planNames={pilot:'World Cup Pilot',annual:'Annual',monthly:'Monthly'};
+    const planPrices={pilot:'$69/mo',annual:'$89/mo',monthly:'$109/mo'};
+    const planColors={pilot:'var(--ios-orange)',annual:'var(--brand)',monthly:'var(--a-blue)'};
+    const isActive=status==='active';
+
+    body.innerHTML=`
+      <!-- Plan card -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em">Current Plan</div>
+          <div style="padding:4px 12px;border-radius:100px;font-size:11px;font-weight:700;
+            background:${isActive?'rgba(0,229,160,.12)':'rgba(255,77,106,.1)'};
+            color:${isActive?'var(--brand)':'var(--ios-red)'}">
+            ${isActive?'Active':'Inactive'}
+          </div>
+        </div>
+        <div style="font-size:28px;font-weight:700;color:${planColors[plan]||'var(--brand)'};letter-spacing:-.03em;margin-bottom:4px">
+          ${planNames[plan]||'—'}
+        </div>
+        <div style="font-size:15px;color:var(--lbl3)">${planPrices[plan]||'—'} · ${totalLocations} location${totalLocations!==1?'s':''}</div>
+
+        ${plan==='pilot'?`
+        <div style="margin-top:16px;padding:12px;background:rgba(255,107,53,.1);border-radius:var(--r-sm);border:.5px solid rgba(255,107,53,.2)">
+          <div style="font-size:13px;color:var(--ios-orange);font-weight:500">
+            World Cup Pilot active — auto-converts to Monthly after 90 days
+          </div>
+        </div>`:''}
+      </div>
+
+      <!-- Actions -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:12px">
+        ${[
+          ['Manage Billing','Update payment method or plan',()=>'_ownerPortal()'],
+          ['Add Location','Set up a new tap+ location',()=>`renderCreateBusiness('${esc(sess.token||'')}')`],
+          ['Download Invoice','Get your latest invoice',()=>'_ownerInvoice()'],
+        ].map(([lbl,sub,fn],i,arr)=>`
+          <div class="ios-row" onclick="${fn()}" style="cursor:pointer">
+            <div style="flex:1">
+              <div style="font-size:16px;font-weight:400">${lbl}</div>
+              <div style="font-size:13px;color:var(--lbl3);margin-top:1px">${sub}</div>
+            </div>
+            <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>`).join('')}
+      </div>
+
+      <!-- Card order info -->
+      ${firstBiz?.cardOrder?`
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Card Order</div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:8px">
+          <span style="color:var(--lbl2)">Tap+ Branded</span>
+          <span style="font-weight:600">${firstBiz.cardOrder.branded||0} cards</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:12px">
+          <span style="color:var(--lbl2)">Custom Printed</span>
+          <span style="font-weight:600">${firstBiz.cardOrder.custom||0} cards</span>
+        </div>
+        <div style="font-size:12px;color:var(--lbl3)">
+          Status: <span style="color:var(--brand);font-weight:500;text-transform:capitalize">${firstBiz.cardOrder.status||'pending'}</span>
+          ${firstBiz.cardOrder.orderedAt?` · Ordered ${new Date(firstBiz.cardOrder.orderedAt).toLocaleDateString()}`:''}
+        </div>
+      </div>`:''}
+
+      <!-- Support -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px">
+        <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Support</div>
+        <div style="font-size:14px;color:var(--lbl2);line-height:1.6">
+          Questions about your subscription?<br/>
+          <a href="mailto:support@tapplus.top" style="color:var(--brand);text-decoration:none;font-weight:500">support@tapplus.top</a>
+        </div>
+      </div>`;
+
+    // Billing portal
+    window._ownerPortal=async function(){
+      if(!firstBiz?.id){showToast('No active subscription found');return;}
+      showLoading('Loading billing…');
+      try{
+        const res=await fetch('/api/subscribe?action=portal',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({bizId:firstBiz.id,returnUrl:window.location.origin})
+        });
+        const data=await res.json();
+        if(data.url)window.location.href=data.url;
+        else{showToast(data.error||'Billing portal unavailable');renderOwnerDashboard();}
+      }catch(e){showToast('Failed to load billing portal');renderOwnerDashboard();}
+    };
+
+    window._ownerInvoice=function(){
+      showToast('Invoice download coming soon');
+    };
+  };
+
+  // ── Shared actions ──────────────────────────────────────────────────────
+  window._ownerOpenBiz=async function(id){
+    showLoading();
+    try{
+      const d=await API.business.getById(id);
+      State.biz=d.business;
+      State.session={...sess,bizId:id,role:'bizAdmin'};
+      await loadDashboardData();
+      renderDashboard();
+    }catch(e){showError(e.message);}
+  };
+
+  window._ownerChangePins=function(bizId,bizName){
+    showModal(`
+      <div class="modal-head">
+        <div class="modal-title">Change PINs</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div style="padding:0 20px 8px">
+        <div style="font-size:14px;color:var(--lbl3);margin-bottom:20px">${esc(bizName)}</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="field-lbl">New Admin PIN</div>
+            <input class="inp" id="op-admin" type="number" inputmode="numeric" placeholder="4-6 digits · blank to keep"/>
+          </div>
+          <div>
+            <div class="field-lbl">New Manager PIN</div>
+            <input class="inp" id="op-mgr" type="number" inputmode="numeric" placeholder="4-6 digits · blank to keep"/>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._ownerSavePins('${bizId}')" style="margin-top:4px">Save PINs</button>
+        </div>
+      </div>`);
+
+    window._ownerSavePins=async function(bId){
+      const adminPin=$('op-admin')?.value?.trim();
+      const mgrPin=$('op-mgr')?.value?.trim();
+      if(!adminPin&&!mgrPin){showToast('Enter at least one PIN');return;}
+      if(adminPin&&adminPin.length<4){showToast('Admin PIN must be 4+ digits');return;}
+      if(mgrPin&&mgrPin.length<4){showToast('Manager PIN must be 4+ digits');return;}
+      if(adminPin&&mgrPin&&adminPin===mgrPin){showToast('PINs must be different');return;}
+      const updates={};
+      if(adminPin)updates.adminPin=adminPin;
+      if(mgrPin)updates.managerPin=mgrPin;
+      closeModal();showLoading('Saving…');
+      try{await API.business.update(bId,updates);showToast('PINs updated ✓');}
+      catch(e){showToast(e.message||'Failed');}
+      renderOwnerDashboard();
+    };
+  };
+
+  render();
 }
 
 // ── Super Admin ───────────────────────────────────────────────────────────────
@@ -29,16 +363,16 @@ function renderSuperAdminDashboard(){
       <div class="tabs">
         <button class="tab active" onclick="window._saT('layout')" id="sa-layout">Layout</button>
         <button class="tab" onclick="window._saT('biz')" id="sa-biz">Businesses</button>
-        <button class="tab" onclick="window._saT('analytics')" id="sa-analytics">📈 Analytics</button>
+        <button class="tab" onclick="window._saT('analytics')" id="sa-analytics">Analytics</button>
       </div>
       <div id="sa-body"></div>
     </div>`;
   function saLayout(){
-    $('sa-body').innerHTML=`<div style="text-align:center;padding:40px"><div class="spinner" style="margin:0 auto"></div></div>`;
+    $('sa-body').innerHTML=`<div style="text-align:center;padding:40px"><div class="ripple-loader"><div class="rl rl1"></div><div class="rl rl2"></div><div class="rl rl3"></div><div class="rl rl4"></div><div class="rldot">+</div></div></div>`;
     API.layout.get().then(data=>{
       const L=data.layouts;
       const SECTIONS={staff:['coaching','feedback','goals','stats','branding'],manager:['ai','analytics','team','staff','goals','estimator','branding2'],bizAdmin:['ai','analytics','team','staff','goals','branding2']};
-      const SLABELS={coaching:'🤖 Coaching',feedback:'💬 Feedback',goals:'🎯 Goals',stats:'📊 Stats',branding:'✨ Branding',ai:'🤖 AI Insights',team:'🏆 Team',staff:'👥 Staff',links:'🔗 Links',estimator:'📈 Estimator',settings:'⚙️ Settings',branding2:'🎨 Branding',analytics:'📈 Analytics'};
+      const SLABELS={coaching:'Coaching',feedback:'Feedback',goals:'Goals',stats:'Stats',branding:'Branding',ai:'AI Insights',team:'Team',staff:'Staff',links:'Links',estimator:'Estimator',settings:'Settings',branding2:'Branding',analytics:'Analytics',analytics:'Analytics'};
       const layouts={staff:[...(L.staff||SECTIONS.staff)],manager:[...(L.manager||SECTIONS.manager)],bizAdmin:[...(L.bizAdmin||SECTIONS.bizAdmin)]};
       function drawLayouts(){
         $('sa-body').innerHTML=Object.entries(layouts).map(([role,order])=>`
@@ -65,12 +399,12 @@ function renderSuperAdminDashboard(){
 async function saBiz() {
   var body = $('sa-body');
   if (!body) return;
-  body.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner" style="margin:0 auto"></div></div>';
+  body.innerHTML = '<div style="text-align:center;padding:40px"><div class="ripple-loader"><div class="rl rl1"></div><div class="rl rl2"></div><div class="rl rl3"></div><div class="rl rl4"></div><div class="rldot">+</div></div></div>';
 
   var EMOJIS = ['🔍','⭐','🦉','🍽️','👍','📘','🔗','📍','🏆','💬','📱','🌐','🎯','✨','🏅'];
-  var allBiz    = [];
-  var openBizId = null;
-  var bizLinks  = {};
+  var allBiz = [];
+  var openBizId = null; // which accordion is open
+  var bizLinks  = {};   // cache: bizId -> [{name,icon,url}]
 
   try {
     var saR = await fetch('/api/business?listAll=1', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
@@ -78,7 +412,6 @@ async function saBiz() {
     if (saD.businesses) allBiz = saD.businesses;
   } catch(e) {}
 
-  // ── Shell ─────────────────────────────────────────────────────────────────
   function draw(businesses) {
     body.innerHTML = `
       <button class="btn btn-primary btn-full" style="margin-bottom:16px" onclick="window._saCreateBiz()">+ Create New Business</button>
@@ -87,7 +420,6 @@ async function saBiz() {
     renderList(businesses);
   }
 
-  // ── Business list ─────────────────────────────────────────────────────────
   function renderList(businesses) {
     var el = $('sa-biz-list');
     if (!el) return;
@@ -104,18 +436,16 @@ async function saBiz() {
               Code: <span style="color:var(--brand);font-weight:700">${esc(b.storeCode)}</span> · ${esc(b.slug)}
             </div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="window._saTogLinks('${b.id}')"
               id="btn-links-${b.id}"
               style="padding:7px 12px;border-radius:var(--r-sm);border:1px solid rgba(255,255,255,.1);
                 background:rgba(255,255,255,.04);color:rgba(238,240,248,.6);font-size:12px;
                 font-weight:700;cursor:pointer;font-family:inherit">
-              🔗 Links
+              Links
             </button>
-            <button onclick="window._saEditBiz('${b.id}','${esc(b.name)}')"
-              style="padding:7px 12px;border-radius:var(--r-sm);border:1px solid rgba(0,229,160,.25);
-                background:rgba(0,229,160,.08);color:var(--brand);font-size:12px;
-                font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
+            <button onclick="window._saEditPins('${b.id}','${esc(b.name)}')"
+              style="padding:7px 12px;border-radius:var(--r-sm);border:1px solid rgba(255,209,102,.25);background:rgba(255,209,102,.08);color:#ffd166;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔑</button>
             <button onclick="window._saViewBiz('${b.id}')" class="btn btn-ghost btn-sm">View</button>
             <button onclick="window._saDeleteBiz('${b.id}','${esc(b.name)}')"
               style="padding:7px 10px;border-radius:var(--r-sm);border:1px solid rgba(255,68,85,.2);
@@ -125,224 +455,47 @@ async function saBiz() {
         </div>
         <div id="accordion-${b.id}" style="display:none;border-top:1px solid rgba(255,255,255,.06);padding:14px">
           <div id="links-body-${b.id}">
-            <div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto"></div></div>
+            <div style="text-align:center;padding:20px"><div class="ripple-loader"><div class="rl rl1"></div><div class="rl rl2"></div><div class="rl rl3"></div><div class="rl rl4"></div><div class="rldot">+</div></div></div>
           </div>
         </div>
       </div>`).join('');
   }
 
-  // ── Edit Business modal ───────────────────────────────────────────────────
-  window._saEditBiz = function(bizId, bizName) {
-
-    // Toggle state — scoped per modal open
-    var _s = {
-      notify:              true,
-      force:               false,
-      'notif-reviews':     true,
-      'notif-leaderboard': true,
-      'notif-coaching':    true,
-      'notif-mute':        false,
-    };
-
-    function toggleHtml(key, on) {
-      return `<div class="toggle${on?' on':''}" id="seb-${key}" onclick="window._sebToggle('${key}')"><div class="toggle-thumb"></div></div>`;
-    }
-
-    showModal(`
-      <div class="modal-head">
-        <div class="modal-title">Edit Business</div>
-        <button class="modal-close" onclick="closeModal()">×</button>
-      </div>
-      <div style="padding:0 20px 24px;display:flex;flex-direction:column;gap:20px">
-
-        <!-- Business Name -->
-        <div>
-          <div class="field-lbl">Business Name</div>
-          <input class="inp" id="seb-name" value="${esc(bizName)}" placeholder="Business name"/>
-        </div>
-
-        <!-- PIN Management -->
-        <div style="background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.18);border-radius:var(--r-md);padding:16px">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#ffd166;margin-bottom:14px">🔑 PIN Management</div>
-
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <div>
-              <div class="field-lbl">New Admin PIN (4–6 digits)</div>
-              <input class="inp" id="seb-admin-pin" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
-            </div>
-            <div>
-              <div class="field-lbl">New Manager PIN (4–6 digits)</div>
-              <input class="inp" id="seb-mgr-pin" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
-            </div>
-          </div>
-
-          <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:4px">
-
-            <!-- Notify owner toggle -->
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-              <div style="flex:1;min-width:0;padding-right:12px">
-                <div style="font-size:14px;font-weight:500">Notify owner of PIN change</div>
-                <div style="font-size:12px;color:var(--lbl2);margin-top:2px">Email sent to owner's signup address only</div>
-              </div>
-              ${toggleHtml('notify', _s.notify)}
-            </div>
-
-            <!-- Force reset toggle -->
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
-              <div style="flex:1;min-width:0;padding-right:12px">
-                <div style="font-size:14px;font-weight:500">Force owner to reset PIN</div>
-                <div style="font-size:12px;color:var(--lbl2);margin-top:2px">Owner must reset on next login</div>
-              </div>
-              ${toggleHtml('force', _s.force)}
-            </div>
-
-          </div>
-
-          <!-- Send reset email now -->
-          <button onclick="window._sebSendReset('${bizId}')"
-            style="width:100%;margin-top:4px;padding:11px;border-radius:var(--r-sm);
-              border:1px solid rgba(255,209,102,.25);background:rgba(255,209,102,.08);
-              color:#ffd166;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-            📧 Send Reset Email to Owner Now
-          </button>
-        </div>
-
-        <!-- Notification Settings -->
-        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-md);padding:16px">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--lbl2);margin-bottom:14px">🔔 Notification Settings</div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-            <div style="flex:1;padding-right:12px">
-              <div style="font-size:14px;font-weight:500">Review notifications</div>
-              <div style="font-size:12px;color:var(--lbl2);margin-top:2px">New tap reviews trigger alerts</div>
-            </div>
-            ${toggleHtml('notif-reviews', _s['notif-reviews'])}
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-            <div style="flex:1;padding-right:12px">
-              <div style="font-size:14px;font-weight:500">Leaderboard & performance alerts</div>
-              <div style="font-size:12px;color:var(--lbl2);margin-top:2px">Staff ranking updates</div>
-            </div>
-            ${toggleHtml('notif-leaderboard', _s['notif-leaderboard'])}
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-            <div style="flex:1;padding-right:12px">
-              <div style="font-size:14px;font-weight:500">AI coaching insights</div>
-              <div style="font-size:12px;color:var(--lbl2);margin-top:2px">Weekly AI summaries to manager</div>
-            </div>
-            ${toggleHtml('notif-coaching', _s['notif-coaching'])}
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
-            <div style="flex:1;padding-right:12px">
-              <div style="font-size:14px;font-weight:500;color:var(--ios-red)">Mute all notifications</div>
-              <div style="font-size:12px;color:var(--lbl2);margin-top:2px">Overrides all settings above</div>
-            </div>
-            ${toggleHtml('notif-mute', _s['notif-mute'])}
-          </div>
-        </div>
-
-        <!-- Save -->
-        <button class="btn btn-primary btn-full" onclick="window._sebSave('${bizId}')">
-          Save Changes
-        </button>
-
-      </div>`);
-
-    // Toggle handler — reads/writes _s which is scoped to this modal open
-    window._sebToggle = function(key) {
-      _s[key] = !_s[key];
-      var el = document.getElementById('seb-' + key);
-      if (el) el.className = 'toggle' + (_s[key] ? ' on' : '');
-    };
-
-    // Send reset email immediately — goes to owner signup email only
-    window._sebSendReset = async function(bId) {
-      try {
-        await API.business.update(bId, { sendPinReset: true });
-        showToast('Reset email sent to owner ✓');
-      } catch(e) {
-        showToast(e.message || 'Failed to send reset email');
-      }
-    };
-
-    // Save all changes
-    window._sebSave = async function(bId) {
-      var newName  = document.getElementById('seb-name')?.value?.trim();
-      var adminPin = document.getElementById('seb-admin-pin')?.value?.trim();
-      var mgrPin   = document.getElementById('seb-mgr-pin')?.value?.trim();
-
-      if (!newName)                               { showToast('Business name cannot be empty'); return; }
-      if (adminPin && adminPin.length < 4)        { showToast('Admin PIN must be 4+ digits'); return; }
-      if (mgrPin   && mgrPin.length < 4)          { showToast('Manager PIN must be 4+ digits'); return; }
-      if (adminPin && mgrPin && adminPin===mgrPin) { showToast('PINs must be different'); return; }
-
-      var updates = {
-        name: newName,
-        pinChange: {
-          notifyOwner: _s['notify'],
-          forceReset:  _s['force'],
-        },
-        notifications: {
-          reviews:     _s['notif-reviews'],
-          leaderboard: _s['notif-leaderboard'],
-          coaching:    _s['notif-coaching'],
-          muteAll:     _s['notif-mute'],
-        },
-      };
-      if (adminPin) updates.adminPin   = adminPin;
-      if (mgrPin)   updates.managerPin = mgrPin;
-
-      closeModal();
-      showLoading('Saving…');
-      try {
-        await API.business.update(bId, updates);
-        // Update local list cache so name reflects immediately without full reload
-        var biz = allBiz.find(b => b.id === bId);
-        if (biz) biz.name = newName;
-        showToast('Business updated ✓');
-      } catch(e) {
-        showToast(e.message || 'Save failed');
-      }
-      renderSuperAdminDashboard();
-      setTimeout(() => window._saT('biz'), 400);
-    };
-  };
-
-  // ── Links accordion ───────────────────────────────────────────────────────
   window._saTogLinks = async function(bizId) {
     var acc = document.getElementById('accordion-'+bizId);
     var btn = document.getElementById('btn-links-'+bizId);
     if (!acc) return;
 
+    // Close if already open
     if (openBizId === bizId) {
       acc.style.display = 'none';
-      btn.style.background  = 'rgba(255,255,255,.04)';
-      btn.style.color       = 'rgba(238,240,248,.6)';
+      btn.style.background = 'rgba(255,255,255,.04)';
+      btn.style.color = 'rgba(238,240,248,.6)';
       btn.style.borderColor = 'rgba(255,255,255,.1)';
       openBizId = null;
       return;
     }
 
+    // Close any other open accordion
     if (openBizId) {
-      var prev    = document.getElementById('accordion-'+openBizId);
+      var prev = document.getElementById('accordion-'+openBizId);
       var prevBtn = document.getElementById('btn-links-'+openBizId);
       if (prev) prev.style.display = 'none';
       if (prevBtn) {
-        prevBtn.style.background  = 'rgba(255,255,255,.04)';
-        prevBtn.style.color       = 'rgba(238,240,248,.6)';
+        prevBtn.style.background = 'rgba(255,255,255,.04)';
+        prevBtn.style.color = 'rgba(238,240,248,.6)';
         prevBtn.style.borderColor = 'rgba(255,255,255,.1)';
       }
     }
 
+    // Open this one
     openBizId = bizId;
     acc.style.display = 'block';
-    btn.style.background  = 'rgba(0,229,160,.12)';
-    btn.style.color       = 'var(--brand)';
+    btn.style.background = 'rgba(0,229,160,.12)';
+    btn.style.color = 'var(--brand)';
     btn.style.borderColor = 'rgba(0,229,160,.4)';
 
+    // Load data if not cached
     if (!bizLinks[bizId]) {
       try {
         var r = await API.business.getById(bizId);
@@ -351,12 +504,15 @@ async function saBiz() {
         bizLinks[bizId] = [];
       }
     }
+
     renderAccordion(bizId);
   };
 
   function renderAccordion(bizId) {
     var el = document.getElementById('links-body-'+bizId);
     if (!el) return;
+    var links = bizLinks[bizId] || [];
+
     el.innerHTML = `
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--lbl2);margin-bottom:12px">
         Review Platforms for this business
@@ -372,6 +528,7 @@ async function saBiz() {
         class="btn btn-primary btn-full" style="padding:11px;font-size:13px">
         Save
       </button>`;
+
     renderLkItems(bizId);
   }
 
@@ -402,7 +559,7 @@ async function saBiz() {
           style="margin-bottom:10px;font-size:13px;padding:9px 12px"/>
         <div class="field-lbl">Icon</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${EMOJIS.map(em=>`
+          ${EMOJIS.map(em => `
             <button onclick="window._saLkIcon('${bizId}',${i},'${em}')"
               style="width:36px;height:36px;border-radius:var(--r-xs);font-size:18px;
                 border:2px solid ${(l.icon||'🔗')===em?'var(--brand)':'rgba(255,255,255,.1)'};
@@ -436,6 +593,7 @@ async function saBiz() {
 
   window._saSaveLk = async function(bizId) {
     var links = bizLinks[bizId] || [];
+    // Validate
     for (var i = 0; i < links.length; i++) {
       if (!links[i].name) { showToast('Enter a name for each platform'); return; }
       if (!links[i].url)  { showToast('Enter a URL for each platform'); return; }
@@ -452,7 +610,46 @@ async function saBiz() {
     } catch(e) { showToast(e.message || 'Save failed'); }
   };
 
-  // ── View / Delete / Search / Create (unchanged) ───────────────────────────
+  window._saEditPins = function(bizId, bizName) {
+    showModal(`
+      <div class="modal-head">
+        <div class="modal-title">Change PINs</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div style="font-size:13px;color:var(--lbl2);margin-bottom:16px">${esc(bizName)}</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div class="field-lbl">New Admin PIN (4-6 digits, blank to keep)</div>
+          <input class="inp" id="sp-admin" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
+        </div>
+        <div>
+          <div class="field-lbl">New Manager PIN (4-6 digits, blank to keep)</div>
+          <input class="inp" id="sp-mgr" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="window._saSavePins('${bizId}')">Save PINs</button>
+      </div>`);
+
+    window._saSavePins = async function(bId) {
+      var adminPin = $('sp-admin')?.value?.trim();
+      var mgrPin   = $('sp-mgr')?.value?.trim();
+      if (!adminPin && !mgrPin) { showToast('Enter at least one PIN to change'); return; }
+      if (adminPin && adminPin.length < 4) { showToast('Admin PIN must be 4+ digits'); return; }
+      if (mgrPin && mgrPin.length < 4)     { showToast('Manager PIN must be 4+ digits'); return; }
+      if (adminPin && mgrPin && adminPin === mgrPin) { showToast('PINs must be different'); return; }
+      const updates = {};
+      if (adminPin) updates.adminPin   = adminPin;
+      if (mgrPin)   updates.managerPin = mgrPin;
+      closeModal();
+      showLoading('Saving PINs…');
+      try {
+        await API.business.update(bId, updates);
+        showToast('PINs updated ✓');
+      } catch(e) { showToast(e.message || 'Failed'); }
+      renderSuperAdminDashboard();
+      setTimeout(() => window._saT('biz'), 400);
+    };
+  };
+
   window._saViewBiz = async function(id) {
     showLoading('Loading…');
     try {
@@ -479,7 +676,7 @@ async function saBiz() {
     try {
       var d = await API.business.getBySlug(q.trim().toLowerCase());
       if (d.business) renderList([d.business]);
-    } catch(e) { renderList([]); }
+    } catch(e2) { renderList([]); }
   };
 
   window._saCreateBiz = function() {
@@ -488,26 +685,24 @@ async function saBiz() {
         <div class="modal-title">Create Business</div>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:12px">
         <div><div class="field-lbl">Owner Email</div><input class="inp" id="sa-cb-email" type="email" placeholder="owner@business.com"/></div>
         <div><div class="field-lbl">Owner Password</div><input class="inp" id="sa-cb-pass" type="password" placeholder="Min 6 characters"/></div>
         <div><div class="field-lbl">Business Name</div><input class="inp" id="sa-cb-name" placeholder="The James Room"/></div>
-        <div><div class="field-lbl">Admin PIN (4–6 digits)</div><input class="inp" id="sa-cb-admin" type="number" inputmode="numeric" placeholder="e.g. 1234"/></div>
-        <div><div class="field-lbl">Manager PIN (4–6 digits)</div><input class="inp" id="sa-cb-mgr" type="number" inputmode="numeric" placeholder="e.g. 5678"/></div>
+        <div><div class="field-lbl">Admin PIN (4-6 digits)</div><input class="inp" id="sa-cb-admin" type="number" inputmode="numeric" placeholder="e.g. 1234"/></div>
+        <div><div class="field-lbl">Manager PIN (4-6 digits)</div><input class="inp" id="sa-cb-mgr" type="number" inputmode="numeric" placeholder="e.g. 5678"/></div>
         <button class="btn btn-primary btn-full" onclick="window._saDoCreate()">Create Business</button>
       </div>`);
     window._saDoCreate = async function() {
-      var email    = $('sa-cb-email')?.value?.trim();
-      var pass     = $('sa-cb-pass')?.value;
-      var name     = $('sa-cb-name')?.value?.trim();
-      var adminPin = $('sa-cb-admin')?.value?.trim();
-      var mgrPin   = $('sa-cb-mgr')?.value?.trim();
-      if (!email)                       { showToast('Enter owner email'); return; }
-      if (!pass || pass.length < 6)     { showToast('Password must be 6+ characters'); return; }
-      if (!name)                        { showToast('Enter business name'); return; }
-      if (!adminPin||adminPin.length<4) { showToast('Admin PIN must be 4+ digits'); return; }
-      if (!mgrPin||mgrPin.length<4)     { showToast('Manager PIN must be 4+ digits'); return; }
-      if (adminPin === mgrPin)          { showToast('PINs must be different'); return; }
+      var email = $('sa-cb-email')?.value?.trim(), pass = $('sa-cb-pass')?.value;
+      var name  = $('sa-cb-name')?.value?.trim();
+      var adminPin = $('sa-cb-admin')?.value?.trim(), mgrPin = $('sa-cb-mgr')?.value?.trim();
+      if (!email)   { showToast('Enter owner email'); return; }
+      if (!pass || pass.length < 6) { showToast('Password must be 6+ characters'); return; }
+      if (!name)    { showToast('Enter business name'); return; }
+      if (!adminPin || adminPin.length < 4) { showToast('Admin PIN must be 4+ digits'); return; }
+      if (!mgrPin   || mgrPin.length < 4)   { showToast('Manager PIN must be 4+ digits'); return; }
+      if (adminPin === mgrPin) { showToast('PINs must be different'); return; }
       closeModal(); showLoading('Creating…');
       try {
         var cred    = await fbAuth.createUserWithEmailAndPassword(email, pass);
