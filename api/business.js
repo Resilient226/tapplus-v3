@@ -34,9 +34,11 @@ async function uniqueCode(excludeId = null) {
   return code;
 }
 
-function sanitize(id, data) {
+function sanitize(id, data, keepOwner = false) {
   const { adminPinHash, mgrPinHash, ownerId, ...safe } = data;
-  return { id, ...safe };
+  const result = { id, ...safe };
+  if (keepOwner && ownerId) result.ownerId = ownerId;
+  return result;
 }
 
 module.exports = async function handler(req, res) {
@@ -86,7 +88,7 @@ module.exports = async function handler(req, res) {
       try {
         const snap = await db.collection(COL).get();
         const businesses = snap.docs
-          .map(d => sanitize(d.id, d.data()))
+          .map(d => sanitize(d.id, d.data(), true))
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return ok(res, { businesses });
       } catch (e) {
@@ -188,6 +190,10 @@ module.exports = async function handler(req, res) {
     const allowed = isBizAdmin
       ? ['name', 'branding', 'links', 'teamGoals', 'platformLinks', 'reviewLinks', 'shifts']
       : ['teamGoals'];
+    // SuperAdmin can also update ownerId
+    if (session.role === 'superAdmin' && body.ownerId !== undefined) {
+      updates.ownerId = body.ownerId;
+    }
 
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
@@ -229,4 +235,3 @@ module.exports = async function handler(req, res) {
   }
 
   return err(res, 'Method not allowed', 405);
-};
