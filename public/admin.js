@@ -363,6 +363,7 @@ function renderSuperAdminDashboard(){
       <div class="tabs">
         <button class="tab active" onclick="window._saT('layout')" id="sa-layout">Layout</button>
         <button class="tab" onclick="window._saT('biz')" id="sa-biz">Businesses</button>
+        <button class="tab" onclick="window._saT('accounts')" id="sa-accounts">Accounts</button>
         <button class="tab" onclick="window._saT('analytics')" id="sa-analytics">Analytics</button>
       </div>
       <div id="sa-body"></div>
@@ -390,10 +391,362 @@ function renderSuperAdminDashboard(){
     });
   }
   window._saT=function(t){
-    ['layout','biz'].forEach(x=>{const b=$('sa-'+x);if(b)b.className='tab'+(x===t?' active':'');});
-    if(t==='layout')saLayout();else if(t==='analytics'){const sb=$('sa-body');if(sb)renderSAAnalytics(sb);}else saBiz();
+    ['layout','biz','accounts','analytics'].forEach(x=>{const b=$('sa-'+x);if(b)b.className='tab'+(x===t?' active':'');});
+    if(t==='layout')saLayout();
+    else if(t==='analytics'){const sb=$('sa-body');if(sb)renderSAAnalytics(sb);}
+    else if(t==='accounts'){const sb=$('sa-body');if(sb)saAccounts(sb);}
+    else saBiz();
   };
   window._saT('layout');
+}
+
+async function saAccounts(body) {
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner" style="margin:0 auto"></div></div>';
+
+  let allAccounts = [];
+  let allBiz = [];
+
+  try {
+    // Fetch all Firebase Auth users via our API
+    const [accRes, bizRes] = await Promise.all([
+      fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } }),
+      fetch('/api/business?listAll=1', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } })
+    ]);
+    const accData = await accRes.json();
+    const bizData = await bizRes.json();
+    if (accData.users) allAccounts = accData.users;
+    if (bizData.businesses) allBiz = bizData.businesses;
+  } catch(e) {
+    body.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--ios-red)">Failed to load accounts</div>';
+    return;
+  }
+
+  // Build a map of ownerId → businesses
+  const ownerBizMap = {};
+  allBiz.forEach(b => {
+    if (!ownerBizMap[b.ownerId]) ownerBizMap[b.ownerId] = [];
+    ownerBizMap[b.ownerId].push(b);
+  });
+
+  function statusPill(text, color) {
+    return `<span style="padding:3px 10px;border-radius:100px;font-size:10px;font-weight:700;
+      background:${color}18;color:${color};letter-spacing:.04em">${text}</span>`;
+  }
+
+  function draw() {
+    const incomplete = allAccounts.filter(u => !ownerBizMap[u.uid] || ownerBizMap[u.uid].length === 0);
+    const complete   = allAccounts.filter(u => ownerBizMap[u.uid] && ownerBizMap[u.uid].length > 0);
+
+    body.innerHTML = `
+      <button class="btn btn-primary btn-full" style="margin-bottom:16px" onclick="window._saInviteAccount()">
+        + Invite / Create Account
+      </button>
+
+      <!-- Incomplete accounts -->
+      ${incomplete.length > 0 ? `
+      <div class="sec-lbl" style="color:var(--ios-orange)">Incomplete Setup (${incomplete.length})</div>
+      <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px">
+        ${incomplete.map((u, i) => `
+          <div style="padding:14px 16px;border-bottom:${i < incomplete.length-1 ? '.5px solid var(--sep)' : 'none'}">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,107,53,.15);
+                display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;
+                color:var(--ios-orange);flex-shrink:0">
+                ${(u.email||'?')[0].toUpperCase()}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  ${esc(u.email||'No email')}
+                </div>
+                <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
+                  No business created · Joined ${new Date(u.createdAt||Date.now()).toLocaleDateString()}
+                </div>
+              </div>
+              ${statusPill('Incomplete', 'var(--ios-orange)')}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button onclick="window._saPromptSetup('${esc(u.uid)}','${esc(u.email||'')}')"
+                style="flex:1;background:rgba(255,107,53,.12);border:none;border-radius:var(--r-sm);
+                       padding:9px;color:var(--ios-orange);font-size:13px;font-weight:600;
+                       cursor:pointer;font-family:inherit">
+                Complete Setup
+              </button>
+              <button onclick="window._saDeleteAccount('${esc(u.uid)}','${esc(u.email||'')}')"
+                style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-sm);
+                       padding:9px 14px;color:var(--ios-red);font-size:13px;font-weight:600;
+                       cursor:pointer;font-family:inherit">
+                Delete
+              </button>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Complete accounts -->
+      <div class="sec-lbl">Active Accounts (${complete.length})</div>
+      <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px">
+        ${complete.length === 0
+          ? '<div style="padding:24px;text-align:center;color:var(--lbl3);font-size:14px">No active accounts yet</div>'
+          : complete.map((u, i) => {
+            const bizzes = ownerBizMap[u.uid] || [];
+            return `
+            <div style="padding:14px 16px;border-bottom:${i < complete.length-1 ? '.5px solid var(--sep)' : 'none'}">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                <div style="width:36px;height:36px;border-radius:50%;background:rgba(0,229,160,.12);
+                  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;
+                  color:var(--brand);flex-shrink:0">
+                  ${(u.email||'?')[0].toUpperCase()}
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                    ${esc(u.email||'No email')}
+                  </div>
+                  <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
+                    ${bizzes.length} location${bizzes.length !== 1 ? 's' : ''}
+                    · Joined ${new Date(u.createdAt||Date.now()).toLocaleDateString()}
+                  </div>
+                </div>
+                ${statusPill('Active', 'var(--brand)')}
+              </div>
+              <!-- Their businesses -->
+              ${bizzes.map(b => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+                  background:var(--bg3);border-radius:var(--r-sm);margin-bottom:6px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:500">${esc(b.name)}</div>
+                    <div style="font-size:11px;color:var(--lbl3);margin-top:1px">
+                      Code: <span style="color:var(--brand);font-weight:600">${esc(b.storeCode)}</span>
+                      <span style="margin-left:6px;padding:1px 6px;border-radius:100px;font-size:9px;font-weight:700;
+                        background:${b.subscriptionStatus==='active'?'rgba(0,229,160,.15)':'rgba(255,77,106,.1)'};
+                        color:${b.subscriptionStatus==='active'?'var(--brand)':'var(--ios-red)'}">
+                        ${b.subscriptionStatus==='active'?'Active':'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                  <button onclick="window._saViewBiz('${b.id}')"
+                    style="background:var(--fill);border:none;border-radius:var(--r-xs);padding:6px 12px;
+                           color:var(--lbl2);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">
+                    View
+                  </button>
+                </div>`).join('')}
+              <!-- Account actions -->
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button onclick="window._saResetPassword('${esc(u.email||'')}')"
+                  style="flex:1;background:var(--fill);border:none;border-radius:var(--r-sm);
+                         padding:9px;color:var(--lbl2);font-size:13px;font-weight:500;
+                         cursor:pointer;font-family:inherit">
+                  Reset Password
+                </button>
+                <button onclick="window._saDeleteAccount('${esc(u.uid)}','${esc(u.email||'')}')"
+                  style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-sm);
+                         padding:9px 14px;color:var(--ios-red);font-size:13px;font-weight:600;
+                         cursor:pointer;font-family:inherit">
+                  Delete
+                </button>
+              </div>
+            </div>`;
+          }).join('')}
+      </div>`;
+  }
+
+  // ── Prompt incomplete account to finish setup ────────────────────────────
+  window._saPromptSetup = function(uid, email) {
+    showModal(`
+      <div class="modal-head">
+        <div class="modal-title">Complete Setup</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div style="padding:0 20px 8px">
+        <div style="font-size:14px;color:var(--lbl3);margin-bottom:20px">
+          ${esc(email)} hasn't created a business yet.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="field-lbl">Business Name</div>
+            <input class="inp" id="ps-name" placeholder="e.g. Low Country Kitchen" style="border-radius:var(--r-md)"/>
+          </div>
+          <div>
+            <div class="field-lbl">Admin PIN (4-6 digits)</div>
+            <input class="inp" id="ps-admin" type="number" inputmode="numeric" placeholder="e.g. 1234" style="border-radius:var(--r-md)"/>
+          </div>
+          <div>
+            <div class="field-lbl">Manager PIN (4-6 digits)</div>
+            <input class="inp" id="ps-mgr" type="number" inputmode="numeric" placeholder="e.g. 5678" style="border-radius:var(--r-md)"/>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._saDoSetup('${esc(uid)}')" style="margin-top:4px">
+            Create Business
+          </button>
+        </div>
+      </div>`);
+
+    window._saDoSetup = async function(ownerId) {
+      const name     = $('ps-name')?.value?.trim();
+      const adminPin = $('ps-admin')?.value?.trim();
+      const mgrPin   = $('ps-mgr')?.value?.trim();
+      if (!name)     { showToast('Enter business name'); return; }
+      if (!adminPin || adminPin.length < 4) { showToast('Admin PIN must be 4+ digits'); return; }
+      if (!mgrPin   || mgrPin.length < 4)   { showToast('Manager PIN must be 4+ digits'); return; }
+      if (adminPin === mgrPin) { showToast('PINs must be different'); return; }
+      closeModal();
+      showLoading('Creating business…');
+      try {
+        // Use SA token to create business for this owner
+        const res = await fetch('/api/business', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + API.auth.getToken(),
+            'X-Owner-Id': ownerId  // SA creating on behalf of owner
+          },
+          body: JSON.stringify({ name, adminPin, managerPin: mgrPin, ownerId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Business created! Code: ' + data.business.storeCode, 4000);
+        } else {
+          showToast(data.error || 'Failed');
+        }
+      } catch(e) {
+        showToast(e.message || 'Failed');
+      }
+      renderSuperAdminDashboard();
+      setTimeout(() => window._saT('accounts'), 400);
+    };
+  };
+
+  // ── Invite / create new account ─────────────────────────────────────────
+  window._saInviteAccount = function() {
+    showModal(`
+      <div class="modal-head">
+        <div class="modal-title">Create Account</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div style="padding:0 20px 8px">
+        <div style="font-size:14px;color:var(--lbl3);margin-bottom:20px">
+          Create a new owner account and optionally set up their business.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="field-lbl">Email</div>
+            <input class="inp" id="inv-email" type="email" placeholder="owner@restaurant.com" style="border-radius:var(--r-md)"/>
+          </div>
+          <div>
+            <div class="field-lbl">Temporary Password</div>
+            <input class="inp" id="inv-pass" type="text" placeholder="Min 6 characters" style="border-radius:var(--r-md)"/>
+          </div>
+          <div style="height:4px"></div>
+          <div style="font-size:13px;font-weight:600;color:var(--lbl2)">Business Setup (optional)</div>
+          <div>
+            <div class="field-lbl">Business Name</div>
+            <input class="inp" id="inv-name" placeholder="Leave blank to skip" style="border-radius:var(--r-md)"/>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1">
+              <div class="field-lbl">Admin PIN</div>
+              <input class="inp" id="inv-admin" type="number" inputmode="numeric" placeholder="4-6 digits" style="border-radius:var(--r-md)"/>
+            </div>
+            <div style="flex:1">
+              <div class="field-lbl">Manager PIN</div>
+              <input class="inp" id="inv-mgr" type="number" inputmode="numeric" placeholder="4-6 digits" style="border-radius:var(--r-md)"/>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._saDoInvite()" style="margin-top:4px">
+            Create Account
+          </button>
+        </div>
+      </div>`);
+
+    window._saDoInvite = async function() {
+      const email    = $('inv-email')?.value?.trim();
+      const pass     = $('inv-pass')?.value?.trim();
+      const bizName  = $('inv-name')?.value?.trim();
+      const adminPin = $('inv-admin')?.value?.trim();
+      const mgrPin   = $('inv-mgr')?.value?.trim();
+
+      if (!email)          { showToast('Enter email'); return; }
+      if (!pass || pass.length < 6) { showToast('Password must be 6+ characters'); return; }
+      if (bizName && (!adminPin || adminPin.length < 4)) { showToast('Admin PIN must be 4+ digits'); return; }
+      if (bizName && (!mgrPin || mgrPin.length < 4))     { showToast('Manager PIN must be 4+ digits'); return; }
+      if (bizName && adminPin && mgrPin && adminPin === mgrPin) { showToast('PINs must be different'); return; }
+
+      closeModal();
+      showLoading('Creating account…');
+
+      try {
+        // Create Firebase Auth user
+        const savedSession = sessionStorage.getItem('tp_session');
+        const cred = await window._fbAuth.createUserWithEmailAndPassword(email, pass);
+        const uid  = cred.user.uid;
+        // Restore SA session
+        if (savedSession) sessionStorage.setItem('tp_session', savedSession);
+
+        if (bizName && adminPin && mgrPin) {
+          // Also create business
+          const idToken = await cred.user.getIdToken();
+          const res = await fetch('/api/business', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+            body: JSON.stringify({ name: bizName, adminPin, managerPin: mgrPin })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(`${email} created! Code: ${data.business.storeCode}`, 4000);
+          } else {
+            showToast(`Account created but business failed: ${data.error}`);
+          }
+        } else {
+          showToast(`Account created for ${email}`);
+        }
+        // Restore SA session
+        if (savedSession) sessionStorage.setItem('tp_session', savedSession);
+      } catch(e) {
+        showToast(e.message || 'Failed');
+      }
+      renderSuperAdminDashboard();
+      setTimeout(() => window._saT('accounts'), 400);
+    };
+  };
+
+  // ── Delete account ──────────────────────────────────────────────────────
+  window._saDeleteAccount = async function(uid, email) {
+    if (!confirm(`Delete account for ${email}?
+
+This removes their login but NOT their business data.`)) return;
+    showLoading('Deleting account…');
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + API.auth.getToken()
+        },
+        body: JSON.stringify({ uid })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`${email} deleted`);
+      } else {
+        showToast(data.error || 'Delete failed');
+      }
+    } catch(e) {
+      showToast(e.message || 'Failed');
+    }
+    renderSuperAdminDashboard();
+    setTimeout(() => window._saT('accounts'), 400);
+  };
+
+  // ── Reset password ───────────────────────────────────────────────────────
+  window._saResetPassword = async function(email) {
+    if (!email) { showToast('No email for this account'); return; }
+    try {
+      await window._fbAuth.sendPasswordResetEmail(email);
+      showToast(`Reset email sent to ${email}`);
+    } catch(e) {
+      showToast(e.message || 'Failed to send reset email');
+    }
+  };
+
+  draw();
 }
 
 async function saBiz() {
