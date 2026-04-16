@@ -970,16 +970,21 @@ async function saBiz() {
     // Load current biz data + owner email
     showModal(`<div class="modal-head"><div class="modal-title">Business Settings</div><button class="modal-close" onclick="closeModal()">×</button></div><div style="padding:0 20px 8px"><div class="spinner" style="margin:20px auto"></div></div>`);
 
-    // Try to load owner email from accounts API
+    // Load owner email from accounts API
     let ownerEmail = '';
+    let resolvedOwnerId = ownerId;
     try {
       const r = await fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
       const d = await r.json();
-      if (d.users) {
-        const owner = d.users.find(u => u.uid === ownerId);
-        if (owner) ownerEmail = owner.email || '';
+      if (d.users && d.users.length > 0) {
+        if (resolvedOwnerId) {
+          // Find by UID
+          const owner = d.users.find(u => u.uid === resolvedOwnerId);
+          if (owner) ownerEmail = owner.email || '';
+        }
+        // If still no email found, ownerId may be stale — show all accounts for manual linking
       }
-    } catch(e) {}
+    } catch(e) { console.warn('Accounts lookup failed:', e.message); }
 
     showModal(`
       <div class="modal-head">
@@ -995,7 +1000,7 @@ async function saBiz() {
             ${ownerEmail
               ? `<div style="font-size:15px;font-weight:500;margin-bottom:12px">${esc(ownerEmail)}</div>
                  <div style="display:flex;gap:8px">
-                   <button onclick="window._saChangeEmail('${esc(ownerId)}','${esc(ownerEmail)}')"
+                   <button onclick="window._saChangeEmail('${esc(resolvedOwnerId)}','${esc(ownerEmail)}')"
                      style="flex:1;background:var(--fill);border:none;border-radius:var(--r-sm);
                             padding:9px;color:var(--lbl2);font-size:13px;font-weight:500;
                             cursor:pointer;font-family:inherit">Change Email</button>
@@ -1004,7 +1009,16 @@ async function saBiz() {
                             padding:9px;color:var(--lbl2);font-size:13px;font-weight:500;
                             cursor:pointer;font-family:inherit">Reset Password</button>
                  </div>`
-              : `<div style="font-size:14px;color:var(--lbl3)">No owner account linked</div>`}
+              : `<div style="font-size:13px;color:var(--lbl3);margin-bottom:12px;line-height:1.5">
+                   No owner account linked. This happens when a business was created
+                   directly or before account tracking was added.
+                 </div>
+                 <button onclick="window._saLinkAccount('${bizId}')"
+                   style="width:100%;background:var(--fill);border:none;border-radius:var(--r-sm);
+                          padding:10px;color:var(--lbl2);font-size:13px;font-weight:500;
+                          cursor:pointer;font-family:inherit">
+                   Link an Existing Account
+                 </button>`}
           </div>
         </div>
 
@@ -1089,6 +1103,71 @@ async function saBiz() {
       } catch(e) {
         showToast(e.message || 'Failed to send reset email');
       }
+    };
+
+    window._saLinkAccount = async function(bId) {
+      // Load all accounts and show a picker
+      let users = [];
+      try {
+        const r = await fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
+        const d = await r.json();
+        users = d.users || [];
+      } catch(e) { showToast('Failed to load accounts'); return; }
+
+      if (users.length === 0) {
+        showToast('No accounts found — create one first');
+        return;
+      }
+
+      const listHtml = users.map(u => `
+        <div class="ios-row" onclick="window._saDoLink('${bId}','${esc(u.uid)}','${esc(u.email||'')}')">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--fill);
+            display:flex;align-items:center;justify-content:center;font-size:13px;
+            font-weight:600;color:var(--brand);flex-shrink:0">
+            ${(u.email||'?')[0].toUpperCase()}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              ${esc(u.email||'No email')}
+            </div>
+            <div style="font-size:12px;color:var(--lbl3);margin-top:1px">
+              Joined ${new Date(u.createdAt||Date.now()).toLocaleDateString()}
+            </div>
+          </div>
+          <svg width="7" height="12" viewBox="0 0 7 12" fill="none">
+            <path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>`).join('');
+
+      showModal(`
+        <div class="modal-head">
+          <div class="modal-title">Link Account</div>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div style="padding:0 20px 8px">
+          <div style="font-size:13px;color:var(--lbl3);margin-bottom:16px">
+            Select the account to link as owner of this business.
+          </div>
+          <div class="ios-group">${listHtml}</div>
+        </div>`);
+
+      window._saDoLink = async function(bId, uid, email) {
+        closeModal();
+        showLoading('Linking…');
+        try {
+          await fetch('/api/business?id=' + bId, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + API.auth.getToken()
+            },
+            body: JSON.stringify({ ownerId: uid })
+          });
+          showToast('Linked to ' + email);
+        } catch(e) { showToast('Failed to link'); }
+        renderSuperAdminDashboard();
+        setTimeout(() => window._saT('biz'), 400);
+      };
     };
   };
 
