@@ -363,7 +363,6 @@ function renderSuperAdminDashboard(){
       <div class="tabs">
         <button class="tab active" onclick="window._saT('layout')" id="sa-layout">Layout</button>
         <button class="tab" onclick="window._saT('biz')" id="sa-biz">Businesses</button>
-        <button class="tab" onclick="window._saT('accounts')" id="sa-accounts">Accounts</button>
         <button class="tab" onclick="window._saT('analytics')" id="sa-analytics">Analytics</button>
       </div>
       <div id="sa-body"></div>
@@ -391,10 +390,9 @@ function renderSuperAdminDashboard(){
     });
   }
   window._saT=function(t){
-    ['layout','biz','accounts','analytics'].forEach(x=>{const b=$('sa-'+x);if(b)b.className='tab'+(x===t?' active':'');});
+    ['layout','biz','analytics'].forEach(x=>{const b=$('sa-'+x);if(b)b.className='tab'+(x===t?' active':'');});
     if(t==='layout')saLayout();
     else if(t==='analytics'){const sb=$('sa-body');if(sb)renderSAAnalytics(sb);}
-    else if(t==='accounts'){const sb=$('sa-body');if(sb)saAccounts(sb);}
     else saBiz();
   };
   window._saT('layout');
@@ -792,17 +790,22 @@ async function saBiz() {
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="window._saTogLinks('${b.id}')"
               id="btn-links-${b.id}"
-              style="padding:7px 12px;border-radius:var(--r-sm);border:1px solid rgba(255,255,255,.1);
-                background:rgba(255,255,255,.04);color:rgba(238,240,248,.6);font-size:12px;
-                font-weight:700;cursor:pointer;font-family:inherit">
+              style="padding:7px 12px;border-radius:var(--r-sm);border:none;
+                background:var(--fill);color:var(--lbl2);font-size:12px;
+                font-weight:500;cursor:pointer;font-family:inherit">
               Links
             </button>
-            <button onclick="window._saEditPins('${b.id}','${esc(b.name)}')"
-              style="padding:7px 12px;border-radius:var(--r-sm);border:1px solid rgba(255,209,102,.25);background:rgba(255,209,102,.08);color:#ffd166;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔑</button>
-            <button onclick="window._saViewBiz('${b.id}')" class="btn btn-ghost btn-sm">View</button>
-            <button onclick="window._saDeleteBiz('${b.id}','${esc(b.name)}')"
-              style="padding:7px 10px;border-radius:var(--r-sm);border:1px solid rgba(255,68,85,.2);
-                background:rgba(255,68,85,.1);color:var(--red);font-size:12px;font-weight:700;
+            <button onclick="window._saBizSettings('${b.id}','${esc(b.name)}','${esc(b.ownerId||'')}')"
+              style="padding:7px 12px;border-radius:var(--r-sm);border:none;
+                background:var(--fill);color:var(--lbl2);font-size:15px;
+                cursor:pointer" title="Settings">⚙️</button>
+            <button onclick="window._saViewBiz('${b.id}')"
+              style="padding:7px 12px;border-radius:var(--r-sm);border:none;
+                background:var(--brand);color:#000;font-size:12px;font-weight:700;
+                cursor:pointer;font-family:inherit">View</button>
+            <button onclick="window._saDeleteBiz('${b.id}','${esc(b.name)}','${esc(b.ownerId||'')}')"
+              style="padding:7px 10px;border-radius:var(--r-sm);border:none;
+                background:rgba(255,77,106,.12);color:var(--ios-red);font-size:12px;font-weight:700;
                 cursor:pointer;font-family:inherit">Del</button>
           </div>
         </div>
@@ -963,29 +966,89 @@ async function saBiz() {
     } catch(e) { showToast(e.message || 'Save failed'); }
   };
 
-  window._saEditPins = function(bizId, bizName) {
+  window._saBizSettings = async function(bizId, bizName, ownerId) {
+    // Load current biz data + owner email
+    showModal(`<div class="modal-head"><div class="modal-title">Business Settings</div><button class="modal-close" onclick="closeModal()">×</button></div><div style="padding:0 20px 8px"><div class="spinner" style="margin:20px auto"></div></div>`);
+
+    // Try to load owner email from accounts API
+    let ownerEmail = '';
+    try {
+      const r = await fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
+      const d = await r.json();
+      if (d.users) {
+        const owner = d.users.find(u => u.uid === ownerId);
+        if (owner) ownerEmail = owner.email || '';
+      }
+    } catch(e) {}
+
     showModal(`
       <div class="modal-head">
-        <div class="modal-title">Change PINs</div>
+        <div class="modal-title">⚙️ ${esc(bizName)}</div>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div style="font-size:13px;color:var(--lbl2);margin-bottom:16px">${esc(bizName)}</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:20px">
+
+        <!-- Owner email section -->
         <div>
-          <div class="field-lbl">New Admin PIN (4-6 digits, blank to keep)</div>
-          <input class="inp" id="sp-admin" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
+          <div class="sec-lbl">Owner Account</div>
+          <div style="background:var(--bg3);border-radius:var(--r-md);padding:14px 16px">
+            ${ownerEmail
+              ? `<div style="font-size:15px;font-weight:500;margin-bottom:12px">${esc(ownerEmail)}</div>
+                 <div style="display:flex;gap:8px">
+                   <button onclick="window._saChangeEmail('${esc(ownerId)}','${esc(ownerEmail)}')"
+                     style="flex:1;background:var(--fill);border:none;border-radius:var(--r-sm);
+                            padding:9px;color:var(--lbl2);font-size:13px;font-weight:500;
+                            cursor:pointer;font-family:inherit">Change Email</button>
+                   <button onclick="window._saResetPw('${esc(ownerEmail)}')"
+                     style="flex:1;background:var(--fill);border:none;border-radius:var(--r-sm);
+                            padding:9px;color:var(--lbl2);font-size:13px;font-weight:500;
+                            cursor:pointer;font-family:inherit">Reset Password</button>
+                 </div>`
+              : `<div style="font-size:14px;color:var(--lbl3)">No owner account linked</div>`}
+          </div>
         </div>
+
+        <!-- PINs section -->
         <div>
-          <div class="field-lbl">New Manager PIN (4-6 digits, blank to keep)</div>
-          <input class="inp" id="sp-mgr" type="number" inputmode="numeric" placeholder="Leave blank to keep current"/>
+          <div class="sec-lbl">PINs</div>
+          <div style="background:var(--bg3);border-radius:var(--r-md);padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div class="field-lbl">New Admin PIN</div>
+              <input class="inp" id="bs-admin" type="number" inputmode="numeric"
+                placeholder="4-6 digits · blank to keep" style="background:var(--bg4)"/>
+            </div>
+            <div>
+              <div class="field-lbl">New Manager PIN</div>
+              <input class="inp" id="bs-mgr" type="number" inputmode="numeric"
+                placeholder="4-6 digits · blank to keep" style="background:var(--bg4)"/>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="window._bsSavePins('${bizId}')">
+              Save PINs
+            </button>
+          </div>
         </div>
-        <button class="btn btn-primary btn-full" onclick="window._saSavePins('${bizId}')">Save PINs</button>
+
+        <!-- Danger zone -->
+        <div>
+          <div class="sec-lbl" style="color:var(--ios-red)">Danger Zone</div>
+          <div style="background:rgba(255,77,106,.06);border:.5px solid rgba(255,77,106,.2);border-radius:var(--r-md);padding:14px 16px">
+            <div style="font-size:13px;color:var(--lbl3);margin-bottom:12px;line-height:1.5">
+              Deleting this business also deletes the owner's login account permanently.
+            </div>
+            <button onclick="closeModal();window._saDeleteBiz('${bizId}','${esc(bizName)}','${esc(ownerId)}')"
+              style="width:100%;background:rgba(255,77,106,.15);border:none;border-radius:var(--r-sm);
+                     padding:11px;color:var(--ios-red);font-size:14px;font-weight:700;
+                     cursor:pointer;font-family:inherit">
+              Delete Business + Account
+            </button>
+          </div>
+        </div>
       </div>`);
 
-    window._saSavePins = async function(bId) {
-      var adminPin = $('sp-admin')?.value?.trim();
-      var mgrPin   = $('sp-mgr')?.value?.trim();
-      if (!adminPin && !mgrPin) { showToast('Enter at least one PIN to change'); return; }
+    window._bsSavePins = async function(bId) {
+      var adminPin = $('bs-admin')?.value?.trim();
+      var mgrPin   = $('bs-mgr')?.value?.trim();
+      if (!adminPin && !mgrPin) { showToast('Enter at least one PIN'); return; }
       if (adminPin && adminPin.length < 4) { showToast('Admin PIN must be 4+ digits'); return; }
       if (mgrPin && mgrPin.length < 4)     { showToast('Manager PIN must be 4+ digits'); return; }
       if (adminPin && mgrPin && adminPin === mgrPin) { showToast('PINs must be different'); return; }
@@ -1001,6 +1064,32 @@ async function saBiz() {
       renderSuperAdminDashboard();
       setTimeout(() => window._saT('biz'), 400);
     };
+
+    window._saChangeEmail = function(uid, currentEmail) {
+      const newEmail = prompt('Enter new email address:', currentEmail);
+      if (!newEmail || newEmail === currentEmail) return;
+      if (!newEmail.includes('@')) { showToast('Invalid email'); return; }
+      fetch('/api/accounts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API.auth.getToken() },
+        body: JSON.stringify({ uid, email: newEmail })
+      }).then(r => r.json()).then(d => {
+        if (d.success) showToast('Email updated to ' + newEmail);
+        else showToast(d.error || 'Failed');
+        closeModal();
+        renderSuperAdminDashboard();
+        setTimeout(() => window._saT('biz'), 400);
+      }).catch(() => showToast('Failed'));
+    };
+
+    window._saResetPw = async function(email) {
+      try {
+        await window._fbAuth.sendPasswordResetEmail(email);
+        showToast('Reset email sent to ' + email);
+      } catch(e) {
+        showToast(e.message || 'Failed to send reset email');
+      }
+    };
   };
 
   window._saViewBiz = async function(id) {
@@ -1014,11 +1103,28 @@ async function saBiz() {
     } catch(e) { showToast(e.message || 'Failed'); renderSuperAdminDashboard(); }
   };
 
-  window._saDeleteBiz = async function(id, name) {
-    if (!confirm('Delete ' + name + '? This cannot be undone.')) return;
+  window._saDeleteBiz = async function(id, name, ownerId) {
+    if (!confirm('Delete ' + name + ' AND the owner account? This cannot be undone.')) return;
     showLoading('Deleting…');
     try {
+      // Delete business data first
       await API.business.delete(id);
+      // Delete Firebase Auth account if ownerId exists
+      if (ownerId) {
+        try {
+          await fetch('/api/accounts', {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + API.auth.getToken()
+            },
+            body: JSON.stringify({ uid: ownerId })
+          });
+        } catch(e) {
+          console.warn('Auth account deletion failed:', e.message);
+          // Don't block on this — business is already deleted
+        }
+      }
       showToast(name + ' deleted');
       renderSuperAdminDashboard();
     } catch(e) { showToast(e.message || 'Delete failed'); renderSuperAdminDashboard(); }
