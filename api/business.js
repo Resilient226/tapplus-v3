@@ -235,3 +235,4 @@ module.exports = async function handler(req, res) {
   }
 
   return err(res, 'Method not allowed', 405);
+};
