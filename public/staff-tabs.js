@@ -100,9 +100,13 @@ function renderGoalsTab(me) {
             ${isComplete ? '<span style="font-size:16px">✅</span>' : ''}
             ${showEdit ? `
               <button onclick="window._editGoal(${i},'${goalView}','${staffId||''}')"
-                style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:var(--r-xs);padding:5px 10px;font-size:11px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit">Edit</button>
+                style="background:var(--fill);border:none;border-radius:var(--r-sm);
+                       padding:5px 12px;font-size:12px;font-weight:500;color:var(--lbl2);
+                       cursor:pointer;font-family:inherit">Edit</button>
               <button onclick="window._deleteGoal(${i},'${goalView}','${staffId||''}')"
-                style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:var(--r-xs);padding:5px 10px;font-size:11px;font-weight:700;color:var(--red);cursor:pointer;font-family:inherit">✕</button>
+                style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-sm);
+                       padding:5px 10px;font-size:12px;font-weight:600;color:var(--ios-red);
+                       cursor:pointer;font-family:inherit">✕</button>
             ` : ''}
           </div>
         </div>
@@ -126,14 +130,14 @@ function renderGoalsTab(me) {
         <div class="modal-title">${existing ? 'Edit Goal' : 'Add Goal'}</div>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="padding:0 20px 8px;display:flex;flex-direction:column;gap:12px">
         <div>
           <div class="field-lbl">Goal Label</div>
-          <input class="inp" id="gl-label" value="${esc(g.label)}" placeholder="e.g. 50 Taps This Month"/>
+          <input class="inp" id="gl-label" value="${esc(g.label)}" placeholder="e.g. 50 Taps This Month" style="border-radius:var(--r-md)"/>
         </div>
         <div>
           <div class="field-lbl">Metric</div>
-          <select class="sel" id="gl-metric">
+          <select class="sel" id="gl-metric" style="border-radius:var(--r-md)">
             <option value="taps"      ${g.metric==='taps'?'selected':''}>Taps</option>
             <option value="fivestar"  ${g.metric==='fivestar'?'selected':''}>5★ Reviews</option>
             <option value="avgrating" ${g.metric==='avgrating'?'selected':''}>Avg Star Rating</option>
@@ -142,19 +146,19 @@ function renderGoalsTab(me) {
         </div>
         <div>
           <div class="field-lbl">Target</div>
-          <input class="inp" id="gl-target" type="number" value="${g.target}" placeholder="e.g. 50" min="1"/>
+          <input class="inp" id="gl-target" type="number" value="${g.target}" placeholder="e.g. 50" min="1" style="border-radius:var(--r-md)"/>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
             <div class="field-lbl">Start Date</div>
-            <input class="inp" id="gl-start" type="date" value="${g.startDate||today}"/>
+            <input class="inp" id="gl-start" type="date" value="${g.startDate||today}" style="border-radius:var(--r-md)"/>
           </div>
           <div>
             <div class="field-lbl">End Date</div>
-            <input class="inp" id="gl-end" type="date" value="${g.endDate||''}"/>
+            <input class="inp" id="gl-end" type="date" value="${g.endDate||''}" style="border-radius:var(--r-md)"/>
           </div>
         </div>
-        <button class="btn btn-primary btn-full" onclick="window._saveGoalModal()">
+        <button class="btn btn-primary btn-full" onclick="window._saveGoalModal()" style="border-radius:var(--r-lg);padding:16px;font-size:16px;margin-top:4px">
           ${existing ? 'Save Changes' : 'Add Goal'}
         </button>
       </div>`);
@@ -205,29 +209,18 @@ function renderGoalsTab(me) {
     if (!selStaffId && activeStaff.length) selStaffId = activeStaff[0].id;
 
     body.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:16px">
-        <button onclick="window._goalView('team')"
-          style="flex:1;padding:10px;border-radius:20px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;
-            border:1px solid ${goalView==='team'?'rgba(0,229,160,.4)':'rgba(255,255,255,.1)'};
-            background:${goalView==='team'?'rgba(0,229,160,.12)':'rgba(255,255,255,.04)'};
-            color:${goalView==='team'?'var(--brand)':'rgba(238,240,248,.5)'}">
-          Team Goals
-        </button>
-        <button onclick="window._goalView('individual')"
-          style="flex:1;padding:10px;border-radius:20px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;
-            border:1px solid ${goalView==='individual'?'rgba(0,229,160,.4)':'rgba(255,255,255,.1)'};
-            background:${goalView==='individual'?'rgba(0,229,160,.12)':'rgba(255,255,255,.04)'};
-            color:${goalView==='individual'?'var(--brand)':'rgba(238,240,248,.5)'}">
-          Individual Goals
-        </button>
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab${goalView==='team'?' active':''}" onclick="window._goalView('team')">Team</button>
+        <button class="tab${goalView==='individual'?' active':''}" onclick="window._goalView('individual')">Individual</button>
       </div>
 
       ${goalView === 'team' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="font-size:12px;color:var(--lbl2)">Goals for the whole team</div>
           ${isManager ? `<button onclick="window._addGoal('team','')"
-            style="background:var(--brand);color:var(--black);border:none;border-radius:var(--r-sm);padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-            + Add Team Goal</button>` : ''}
+            style="background:var(--brand);color:#000;border:none;border-radius:100px;
+                   padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+            + Add</button>` : ''}
         </div>
         <div id="goals-list">
           ${tGoals.length === 0
@@ -235,22 +228,24 @@ function renderGoalsTab(me) {
             : tGoals.map((g, i) => goalCard(g, i, null, isManager)).join('')}
         </div>
       ` : `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
           ${activeStaff.map(s => `
             <button onclick="window._selStaff('${s.id}')"
-              style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
-                border:1px solid ${selStaffId===s.id?'rgba(0,229,160,.4)':'rgba(255,255,255,.1)'};
-                background:${selStaffId===s.id?'rgba(0,229,160,.12)':'rgba(255,255,255,.04)'};
-                color:${selStaffId===s.id?'var(--brand)':'rgba(238,240,248,.5)'}">
-              ${staffAvatar(s, 20)} ${esc(staffDisplay(s))}
+              style="display:flex;align-items:center;gap:7px;padding:7px 14px;
+                border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;
+                border:none;
+                background:${selStaffId===s.id?'rgba(0,229,160,.15)':'var(--fill)'};
+                color:${selStaffId===s.id?'var(--brand)':'var(--lbl2)'}">
+              ${staffAvatar(s, 22)} ${esc(staffDisplay(s))}
             </button>`).join('')}
         </div>
         ${selStaffId ? `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--lbl2)">Goals For</div>
             ${isManager ? `<button onclick="window._addGoal('individual','${selStaffId}')"
-              style="background:var(--brand);color:var(--black);border:none;border-radius:var(--r-sm);padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-              + Add Goal</button>` : ''}
+              style="background:var(--brand);color:#000;border:none;border-radius:100px;
+                     padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              + Add</button>` : ''}
           </div>
           <div id="goals-list">
             ${iGoals(selStaffId).length === 0
@@ -297,16 +292,22 @@ function renderGoalsTab(me) {
     };
   }
 
-  // Staff view — read only progress (rendered into dash-body directly)
+  // Staff view — read only progress
   if (!isManager) {
     const teamGoals = State.biz?.teamGoals || [];
     const myGoals   = teamGoals.filter(g => !g.staffId || g.staffId === (me?.id));
-    if (!myGoals.length) return '<div class="card" style="text-align:center;color:var(--lbl2);padding:40px">No goals set yet.</div>';
+    if (!myGoals.length) return `
+      <div style="text-align:center;padding:60px 20px;color:var(--lbl3)">
+        <div style="font-size:36px;margin-bottom:16px">🎯</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">No goals yet</div>
+        <div style="font-size:14px">Your manager will set goals for you</div>
+      </div>`;
     return myGoals.map((g, i) => goalCard(g, i, me?.id || null, false)).join('');
   }
 
-  // Coming soon
-  return '<div style="text-align:center;padding:60px 20px"><div style="font-size:40px;margin-bottom:16px">🎯</div><div style="font-size:18px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px">Goals</div><div style="font-size:14px;color:var(--lbl3)">Coming soon</div></div>';
+  // Manager / bizAdmin — full interactive view
+  draw();
+  return '';
 }
 
 
@@ -368,25 +369,33 @@ function renderBrandingTab(body,me){
     const i=document.createElement('input');i.type='file';i.accept='image/*';
     i.onchange=e=>{
       const f=e.target.files[0];if(!f)return;
-      // Compress image using canvas before storing
-      const img=new Image();
-      const objectUrl=URL.createObjectURL(f);
-      img.onload=function(){
-        const MAX=400; // max width/height px — keeps file tiny
-        let w=img.width,h=img.height;
-        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}
-        else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
-        const canvas=document.createElement('canvas');
-        canvas.width=w;canvas.height=h;
-        const ctx=canvas.getContext('2d');
-        ctx.drawImage(img,0,0,w,h);
-        const compressed=canvas.toDataURL('image/jpeg',0.7); // 70% quality JPEG
-        URL.revokeObjectURL(objectUrl);
-        photoData=compressed;
-        const a=$('br-av');
-        if(a)a.innerHTML=`<img src="${compressed}" style="width:64px;height:64px;border-radius:50%;object-fit:cover"/>`;
+      const reader=new FileReader();
+      reader.onload=function(ev){
+        const dataUrl=ev.target.result;
+        // Compress via canvas
+        const img=new Image();
+        img.onload=function(){
+          const MAX=400;
+          let w=img.width,h=img.height;
+          if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+          if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+          const canvas=document.createElement('canvas');
+          canvas.width=w;canvas.height=h;
+          canvas.getContext('2d').drawImage(img,0,0,w,h);
+          const compressed=canvas.toDataURL('image/jpeg',0.75);
+          photoData=compressed;
+          const a=$('br-av');
+          if(a)a.innerHTML=`<img src="${compressed}" style="width:64px;height:64px;border-radius:50%;object-fit:cover"/>`;
+        };
+        img.onerror=function(){
+          // Fallback: use raw data if canvas fails
+          photoData=dataUrl;
+          const a=$('br-av');
+          if(a)a.innerHTML=`<img src="${dataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover"/>`;
+        };
+        img.src=dataUrl;
       };
-      img.src=objectUrl;
+      reader.readAsDataURL(f);
     };i.click();
   };
   window._rmBrLink=function(i){links.splice(i,1);renderLinks();};
