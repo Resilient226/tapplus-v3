@@ -760,8 +760,27 @@ async function saBiz() {
   try {
     var saR = await fetch('/api/business?listAll=1', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
     var saD = await saR.json();
-    if (saD.businesses) allBiz = saD.businesses;
-  } catch(e) {}
+    if (saD.businesses) {
+      allBiz = saD.businesses;
+    } else if (saD.error) {
+      // Show the actual error so we can debug
+      if (body) body.innerHTML = `<div style="background:rgba(255,77,106,.1);border-radius:var(--r-lg);padding:20px;color:var(--ios-red);font-size:14px;line-height:1.6">
+        <div style="font-weight:700;margin-bottom:6px">Failed to load businesses</div>
+        <div style="font-family:monospace;font-size:12px;color:var(--lbl3)">${esc(saD.error)} (${saR.status})</div>
+        <div style="margin-top:12px;font-size:13px;color:var(--lbl3)">
+          ${saR.status === 401 || saR.status === 403 ? 'Your SA session may have expired. Sign out and back in.' : 'Check Vercel function logs for details.'}
+        </div>
+        <button onclick="API.auth.logout();renderHome()" style="margin-top:16px;background:var(--fill);border:none;border-radius:var(--r-sm);padding:10px 20px;color:var(--lbl2);font-size:13px;cursor:pointer;font-family:inherit;width:100%">Sign Out & Re-authenticate</button>
+      </div>`;
+      return;
+    }
+  } catch(e) {
+    if (body) body.innerHTML = `<div style="background:rgba(255,77,106,.1);border-radius:var(--r-lg);padding:20px;color:var(--ios-red);font-size:14px">
+      <div style="font-weight:700;margin-bottom:6px">Network error</div>
+      <div style="font-size:12px;color:var(--lbl3)">${esc(e.message)}</div>
+    </div>`;
+    return;
+  }
 
   function draw(businesses) {
     body.innerHTML = `
