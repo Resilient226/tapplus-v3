@@ -79,6 +79,45 @@ async function route(){
   if(location.pathname==='/success')return handleSuccessRoute();
   if(location.pathname==='/subscribe')return renderSubscribeFlow();
   // Check for saved location — skip code entry
+  // Check for remembered owner session
+  const ownerRem = localStorage.getItem('tp_owner_remember');
+  if(ownerRem){
+    const ownerSaved = localStorage.getItem('tp_owner_session');
+    if(ownerSaved){
+      try{
+        const parsed = JSON.parse(ownerSaved);
+        const age = Date.now() - (parsed.savedAt||0);
+        if(age < 30*24*60*60*1000 && parsed.session){
+          State.session = parsed.session;
+          return renderOwnerDashboard();
+        }
+      }catch(e){ localStorage.removeItem('tp_owner_session'); }
+    }
+  }
+
+  // Check for remembered PIN sessions
+  const roles = ['staff','manager','bizAdmin'];
+  for(const r of roles){
+    const rem = localStorage.getItem('tp_remember_'+r);
+    if(rem){
+      const saved = localStorage.getItem('tp_session_'+r);
+      if(saved){
+        try{
+          const parsed = JSON.parse(saved);
+          // Sessions expire after 30 days
+          const age = Date.now() - (parsed.savedAt||0);
+          if(age < 30*24*60*60*1000 && parsed.session && parsed.biz){
+            State.session = parsed.session;
+            State.biz = parsed.biz;
+            await loadDashboardData();
+            return renderDashboard();
+          }
+        }catch(e){ localStorage.removeItem('tp_session_'+r); }
+      }
+    }
+  }
+
+  // Check for remembered business location
   const saved = getSavedBiz();
   if(saved){
     try {
@@ -248,12 +287,35 @@ function renderPinLogin(role){
             ${k==='del'?'⌫':k==='go'?'↵':k}
           </button>`).join('')}
       </div>
+      <div style="margin-top:24px;display:flex;align-items:center;gap:10px;justify-content:center">
+        <div id="rm-toggle" onclick="window._toggleRM()"
+          style="width:44px;height:26px;border-radius:13px;
+            background:${localStorage.getItem('tp_remember_'+role)?'var(--brand)':'var(--fill-med)'};
+            position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
+          <div style="position:absolute;top:3px;
+            left:${localStorage.getItem('tp_remember_'+role)?'21px':'3px'};
+            width:20px;height:20px;border-radius:50%;background:#fff;
+            box-shadow:0 1px 4px rgba(0,0,0,.3);transition:left .25s"></div>
+        </div>
+        <div style="font-size:15px;color:var(--lbl2);cursor:pointer" onclick="window._toggleRM()">Remember me</div>
+      </div>
       <button onclick="renderRoleSelect()"
-        style="margin-top:32px;background:none;border:none;color:var(--brand);
+        style="margin-top:16px;background:none;border:none;color:var(--brand);
                font-size:17px;cursor:pointer;font-family:inherit;font-weight:500">
         Cancel
       </button>
     </div>`;
+  let _rememberMe = !!localStorage.getItem('tp_remember_'+role);
+
+  window._toggleRM = function() {
+    _rememberMe = !_rememberMe;
+    const tog = document.getElementById('rm-toggle');
+    if (tog) {
+      tog.style.background = _rememberMe ? 'var(--brand)' : 'var(--fill-med)';
+      tog.children[0].style.left = _rememberMe ? '21px' : '3px';
+    }
+  };
+
   window._pin=async function(v){
     if(v==='del'){pin=pin.slice(0,-1);}
     else if(v==='go'){
@@ -265,6 +327,21 @@ function renderPinLogin(role){
         else if(role==='manager')d=await API.auth.loginManager(State.biz.id,pin);
         else d=await API.auth.loginBizAdmin(State.biz.id,pin);
         State.session=d;
+
+        // Save to localStorage if remember me is on
+        if(_rememberMe){
+          localStorage.setItem('tp_remember_'+role, '1');
+          localStorage.setItem('tp_session_'+role, JSON.stringify({
+            session: d,
+            bizId: State.biz?.id,
+            biz: State.biz,
+            savedAt: Date.now()
+          }));
+        } else {
+          localStorage.removeItem('tp_remember_'+role);
+          localStorage.removeItem('tp_session_'+role);
+        }
+
         await loadDashboardData();
         renderDashboard();
       }catch{showToast('Invalid PIN — try again');renderPinLogin(role);}
@@ -297,6 +374,18 @@ function renderOwnerLogin(){
             onkeydown="if(event.key==='Enter')window._signin()"/>
         </div>
         <div style="height:4px"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+          <div id="owner-rm-tog" onclick="window._ownerTogRM()"
+            style="width:44px;height:26px;border-radius:13px;
+              background:${localStorage.getItem('tp_owner_remember')?'var(--brand)':'var(--fill-med)'};
+              position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
+            <div style="position:absolute;top:3px;
+              left:${localStorage.getItem('tp_owner_remember')?'21px':'3px'};
+              width:20px;height:20px;border-radius:50%;background:#fff;
+              box-shadow:0 1px 4px rgba(0,0,0,.3);transition:left .25s"></div>
+          </div>
+          <div style="font-size:15px;color:var(--lbl2);cursor:pointer" onclick="window._ownerTogRM()">Remember me</div>
+        </div>
         <button class="btn btn-primary btn-full" onclick="window._signin()"
           style="font-size:17px;padding:17px;border-radius:var(--r-lg)">
           Sign In
@@ -312,6 +401,15 @@ function renderOwnerLogin(){
         </button>
       </div>
     </div>`;
+  let _ownerRemember = !!localStorage.getItem('tp_owner_remember');
+  window._ownerTogRM = function() {
+    _ownerRemember = !_ownerRemember;
+    const tog = document.getElementById('owner-rm-tog');
+    if(tog){
+      tog.style.background = _ownerRemember ? 'var(--brand)' : 'var(--fill-med)';
+      tog.children[0].style.left = _ownerRemember ? '21px' : '3px';
+    }
+  };
   window._signin=async function(){
     if(!fbAuth){fbAuth=window._fbAuth||null;}
     const email=$('oe')?.value?.trim(),pass=$('op')?.value;
@@ -338,6 +436,17 @@ function renderOwnerLogin(){
         }catch(bizErr){
           console.warn('Business lookup failed:',bizErr.message);
         }
+      }
+      // Save owner session if remember me
+      if(_ownerRemember){
+        localStorage.setItem('tp_owner_remember','1');
+        localStorage.setItem('tp_owner_session', JSON.stringify({
+          session: State.session,
+          savedAt: Date.now()
+        }));
+      } else {
+        localStorage.removeItem('tp_owner_remember');
+        localStorage.removeItem('tp_owner_session');
       }
       renderOwnerDashboard();
     }catch(e){app().innerHTML='';renderOwnerLogin();showToast(e.message||'Sign in failed');}
