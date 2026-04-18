@@ -7,7 +7,8 @@ async function renderOwnerDashboard(){
   showLoading('Loading…');
   let bizList=[];
   try{
-    const results=await Promise.allSettled(bizIds.map(id=>API.business.getById(id)));
+    // bizIds may be array of {id,name,slug} objects or plain strings
+    const results=await Promise.allSettled(bizIds.map(b=>API.business.getById(b?.id||b)));
     bizList=results.filter(r=>r.status==='fulfilled').map(r=>r.value.business);
   }catch(e){}
 
@@ -27,6 +28,22 @@ async function renderOwnerDashboard(){
     (allTaps.reduce((s,t)=>s+(t.rating||0),0)/allTaps.length).toFixed(1):
     '—';
   const totalLocations=bizList.length;
+
+  window._ownerAddLocation = async function() {
+    const auth = window._fbAuth || fbAuth;
+    if (!auth || !auth.currentUser) {
+      showToast('Please sign out and sign back in to add a location');
+      return;
+    }
+    showLoading('Preparing…');
+    try {
+      const idToken = await auth.currentUser.getIdToken(true);
+      renderCreateBusiness(idToken);
+    } catch(e) {
+      showToast(e.message || 'Failed — please sign out and back in');
+      renderOwnerDashboard();
+    }
+  };
 
   function render(){
     app().innerHTML=`
@@ -95,7 +112,7 @@ async function renderOwnerDashboard(){
           <div style="font-size:40px;margin-bottom:16px">🏪</div>
           <div style="font-size:18px;font-weight:600;margin-bottom:8px">No locations yet</div>
           <div style="font-size:14px;color:var(--lbl3);margin-bottom:24px">Create your first location to get started</div>
-          <button class="btn btn-primary" onclick="renderCreateBusiness('${esc(sess.token||'')}')">Create Location</button>
+          <button class="btn btn-primary" onclick="window._ownerAddLocation()">Create Location</button>
         </div>`;
       return;
     }
@@ -148,7 +165,7 @@ async function renderOwnerDashboard(){
           </div>
         </div>`;
       }).join('')}
-      <button class="btn btn-ghost btn-full" onclick="renderCreateBusiness('${esc(sess.token||'')}')"
+      <button class="btn btn-ghost btn-full" onclick="window._ownerAddLocation()"
         style="border-radius:var(--r-lg);margin-top:4px">
         + Add Location
       </button>`;
@@ -239,7 +256,7 @@ async function renderOwnerDashboard(){
       <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:12px">
         ${[
           ['Manage Billing','Update payment method or plan',()=>'_ownerPortal()'],
-          ['Add Location','Set up a new tap+ location',()=>`renderCreateBusiness('${esc(sess.token||'')}')`],
+          ['Add Location','Set up a new tap+ location',()=>`window._ownerAddLocation()`],
           ['Download Invoice','Get your latest invoice',()=>'_ownerInvoice()'],
         ].map(([lbl,sub,fn],i,arr)=>`
           <div class="ios-row" onclick="${fn()}" style="cursor:pointer">
@@ -673,7 +690,9 @@ async function saAccounts(body) {
       try {
         // Create Firebase Auth user
         const savedSession = sessionStorage.getItem('tp_session');
-        const cred = await window._fbAuth.createUserWithEmailAndPassword(email, pass);
+        const auth = window._fbAuth || fbAuth;
+        if (!auth) { showToast('Firebase not ready'); return; }
+        const cred = await auth.createUserWithEmailAndPassword(email, pass);
         const uid  = cred.user.uid;
         // Restore SA session
         if (savedSession) sessionStorage.setItem('tp_session', savedSession);
@@ -736,10 +755,13 @@ This removes their login but NOT their business data.`)) return;
   // ── Reset password ───────────────────────────────────────────────────────
   window._saResetPassword = async function(email) {
     if (!email) { showToast('No email for this account'); return; }
+    const auth = window._fbAuth || fbAuth;
+    if (!auth) { showToast('Firebase not ready — try again'); return; }
     try {
-      await window._fbAuth.sendPasswordResetEmail(email);
-      showToast(`Reset email sent to ${email}`);
+      await auth.sendPasswordResetEmail(email);
+      showToast(`Reset email sent to ${email}`, 3500);
     } catch(e) {
+      console.error('Reset pw:', e);
       showToast(e.message || 'Failed to send reset email');
     }
   };
@@ -1116,10 +1138,14 @@ async function saBiz() {
     };
 
     window._saResetPw = async function(email) {
+      const auth = window._fbAuth || fbAuth;
+      if (!auth) { showToast('Firebase not ready — try again'); return; }
+      if (!email) { showToast('No email address found'); return; }
       try {
-        await window._fbAuth.sendPasswordResetEmail(email);
-        showToast('Reset email sent to ' + email);
+        await auth.sendPasswordResetEmail(email);
+        showToast('Reset email sent to ' + email, 3500);
       } catch(e) {
+        console.error('Reset pw error:', e);
         showToast(e.message || 'Failed to send reset email');
       }
     };
