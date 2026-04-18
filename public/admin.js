@@ -152,10 +152,12 @@ async function renderOwnerDashboard(){
           </div>
           <!-- Actions -->
           <div style="display:flex;gap:8px">
-            <button onclick="window._ownerOpenBiz('${b.id}')"
-              style="flex:1;background:var(--brand);border:none;border-radius:var(--r-sm);padding:10px;
-                     color:#000;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-              Manage
+            <button onclick="${b.subscriptionStatus==='active'?`window._ownerOpenBiz('${b.id}')`:`window._ownerTab('billing')`}"
+              style="flex:1;background:${b.subscriptionStatus==='active'?'var(--brand)':'var(--fill)'};
+                     border:none;border-radius:var(--r-sm);padding:10px;
+                     color:${b.subscriptionStatus==='active'?'#000':'var(--lbl2)'};
+                     font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              ${b.subscriptionStatus==='active'?'Manage':'Subscribe'}
             </button>
             <button onclick="window._ownerChangePins('${b.id}','${esc(b.name)}')"
               style="background:var(--fill);border:none;border-radius:var(--r-sm);padding:10px 16px;
@@ -272,15 +274,19 @@ async function renderOwnerDashboard(){
           </div>
         </div>
 
-        ${!isActive||!plan?`
-          <div style="font-size:22px;font-weight:700;color:var(--lbl3);margin-bottom:10px">No Active Plan</div>
+        ${!isActive?`
+          <div style="font-size:22px;font-weight:700;margin-bottom:8px">
+            ${plan ? planNames[plan] : 'No Active Plan'}
+          </div>
           <div style="font-size:14px;color:var(--lbl3);line-height:1.6;margin-bottom:20px">
-            Subscribe to start collecting reviews, tracking staff, and growing your ratings.
+            ${plan
+              ? 'Your subscription is inactive. Subscribe to reactivate your account.'
+              : 'Subscribe to start collecting reviews, tracking staff, and growing your ratings.'}
           </div>
           <button onclick="renderSubscribeFlow(bizList[0])"
             style="width:100%;background:var(--brand);border:none;border-radius:var(--r-lg);
                    padding:16px;font-size:17px;font-weight:700;color:#000;cursor:pointer;font-family:inherit">
-            Subscribe Now →
+            ${plan ? 'Reactivate Subscription →' : 'Choose a Plan →'}
           </button>
         `:`
           <div style="font-size:30px;font-weight:700;letter-spacing:-.03em;margin-bottom:4px;color:${planColors[plan]||'var(--brand)'}">
