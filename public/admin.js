@@ -221,81 +221,158 @@ async function renderOwnerDashboard(){
   // ── Billing tab ──────────────────────────────────────────────────────────
   window._ownerBilling=function(body){
     const firstBiz=bizList[0];
-    const plan=firstBiz?.plan||'monthly';
+    const plan=firstBiz?.plan||null;
     const status=firstBiz?.subscriptionStatus||'inactive';
     const planNames={pilot:'World Cup Pilot',annual:'Annual',monthly:'Monthly'};
     const planPrices={pilot:'$69/mo',annual:'$89/mo',monthly:'$109/mo'};
-    const planColors={pilot:'var(--ios-orange)',annual:'var(--brand)',monthly:'var(--a-blue)'};
+    const planColors={pilot:'var(--ios-orange)',annual:'var(--a-blue)',monthly:'var(--a-blue)'};
     const isActive=status==='active';
+
+    // Calculate time remaining
+    const subscribedAt=firstBiz?.subscribedAt||null;
+    const trialEndsAt=firstBiz?.trialEndsAt||null;
+    const now=Date.now();
+    let daysLeft=null;
+    let renewsDate=null;
+    let timeLabel='';
+    let progressPct=0;
+
+    if(isActive && subscribedAt){
+      if(plan==='pilot'&&trialEndsAt){
+        daysLeft=Math.max(0,Math.ceil((trialEndsAt-now)/(86400000)));
+        renewsDate=new Date(trialEndsAt);
+        timeLabel=`Pilot ends ${renewsDate.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+        progressPct=Math.round(daysLeft/90*100);
+      } else if(plan==='annual'){
+        const renewsAt=new Date(subscribedAt);renewsAt.setFullYear(renewsAt.getFullYear()+1);
+        daysLeft=Math.max(0,Math.ceil((renewsAt-now)/(86400000)));
+        renewsDate=renewsAt;
+        timeLabel=`Renews ${renewsDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+        progressPct=Math.round(daysLeft/365*100);
+      } else if(plan==='monthly'){
+        const renewsAt=new Date(subscribedAt);renewsAt.setMonth(renewsAt.getMonth()+1);
+        daysLeft=Math.max(0,Math.ceil((renewsAt-now)/(86400000)));
+        renewsDate=renewsAt;
+        timeLabel=`Renews ${renewsDate.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+        progressPct=Math.round(daysLeft/30*100);
+      }
+    }
+
+    const urgentColor=daysLeft<=7?'var(--ios-red)':daysLeft<=14?'var(--ios-orange)':'var(--brand)';
 
     body.innerHTML=`
       <!-- Plan card -->
       <div style="background:var(--bg2);border-radius:var(--r-lg);padding:20px;margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em">Current Plan</div>
+          <div style="font-size:12px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em">Current Plan</div>
           <div style="padding:4px 12px;border-radius:100px;font-size:11px;font-weight:700;
             background:${isActive?'rgba(0,229,160,.12)':'rgba(255,77,106,.1)'};
             color:${isActive?'var(--brand)':'var(--ios-red)'}">
             ${isActive?'Active':'Inactive'}
           </div>
         </div>
-        <div style="font-size:28px;font-weight:700;color:${planColors[plan]||'var(--brand)'};letter-spacing:-.03em;margin-bottom:4px">
-          ${planNames[plan]||'—'}
-        </div>
-        <div style="font-size:15px;color:var(--lbl3)">${planPrices[plan]||'—'} · ${totalLocations} location${totalLocations!==1?'s':''}</div>
 
-        ${plan==='pilot'?`
-        <div style="margin-top:16px;padding:12px;background:rgba(255,107,53,.1);border-radius:var(--r-sm);border:.5px solid rgba(255,107,53,.2)">
-          <div style="font-size:13px;color:var(--ios-orange);font-weight:500">
-            World Cup Pilot active — auto-converts to Monthly after 90 days
+        ${!isActive||!plan?`
+          <div style="font-size:22px;font-weight:700;color:var(--lbl3);margin-bottom:10px">No Active Plan</div>
+          <div style="font-size:14px;color:var(--lbl3);line-height:1.6;margin-bottom:20px">
+            Subscribe to start collecting reviews, tracking staff, and growing your ratings.
           </div>
-        </div>`:''}
+          <button onclick="renderSubscribeFlow(bizList[0])"
+            style="width:100%;background:var(--brand);border:none;border-radius:var(--r-lg);
+                   padding:16px;font-size:17px;font-weight:700;color:#000;cursor:pointer;font-family:inherit">
+            Subscribe Now →
+          </button>
+        `:`
+          <div style="font-size:30px;font-weight:700;letter-spacing:-.03em;margin-bottom:4px;color:${planColors[plan]||'var(--brand)'}">
+            ${planNames[plan]}
+          </div>
+          <div style="font-size:15px;color:var(--lbl3);margin-bottom:${daysLeft!==null?'16px':'4px'}">
+            ${planPrices[plan]} · ${totalLocations} location${totalLocations!==1?'s':''}
+          </div>
+
+          ${daysLeft!==null?`
+          <div style="background:var(--bg3);border-radius:var(--r-md);padding:14px 16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:14px;color:var(--lbl2)">${timeLabel}</div>
+              <div style="font-size:22px;font-weight:700;color:${urgentColor};letter-spacing:-.02em">
+                ${daysLeft}d
+              </div>
+            </div>
+            <div style="height:5px;background:var(--fill);border-radius:3px;overflow:hidden">
+              <div style="height:100%;border-radius:3px;background:${urgentColor};
+                width:${progressPct}%;transition:width .5s ease"></div>
+            </div>
+            ${daysLeft<=7?`
+            <div style="font-size:12px;color:var(--ios-red);margin-top:8px;font-weight:500">
+              ⚠️ Expiring soon — renew to avoid interruption
+            </div>`:''}
+          </div>`:''}
+
+          ${plan==='pilot'?`
+          <div style="margin-top:12px;padding:12px;background:rgba(255,107,53,.08);
+            border-radius:var(--r-sm);border:.5px solid rgba(255,107,53,.2)">
+            <div style="font-size:13px;color:var(--ios-orange);font-weight:500;line-height:1.5">
+              World Cup Pilot — auto-converts to Monthly ($109/mo) after 90 days
+            </div>
+          </div>`:''}`}
       </div>
 
       <!-- Actions -->
       <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:12px">
-        ${[
-          ['Manage Billing','Update payment method or plan',()=>'_ownerPortal()'],
-          ['Add Location','Set up a new tap+ location',()=>`window._ownerAddLocation()`],
-          ['Download Invoice','Get your latest invoice',()=>'_ownerInvoice()'],
-        ].map(([lbl,sub,fn],i,arr)=>`
-          <div class="ios-row" onclick="${fn()}" style="cursor:pointer">
-            <div style="flex:1">
-              <div style="font-size:16px;font-weight:400">${lbl}</div>
-              <div style="font-size:13px;color:var(--lbl3);margin-top:1px">${sub}</div>
-            </div>
-            <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>`).join('')}
+        ${isActive?`
+        <div class="ios-row" onclick="window._ownerPortal()" style="cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:400">Manage Billing</div>
+            <div style="font-size:13px;color:var(--lbl3);margin-top:1px">Update payment method, cancel, or change plan</div>
+          </div>
+          <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>`:''}
+        <div class="ios-row" onclick="window._ownerAddLocation()" style="cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:400">Add Location</div>
+            <div style="font-size:13px;color:var(--lbl3);margin-top:1px">Set up a new Tap+ location</div>
+          </div>
+          <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        ${isActive?`
+        <div class="ios-row" onclick="window._ownerInvoice()" style="cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:400">Download Invoice</div>
+            <div style="font-size:13px;color:var(--lbl3);margin-top:1px">Get your latest invoice</div>
+          </div>
+          <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>`:''}
       </div>
 
-      <!-- Card order info -->
+      <!-- Card order -->
       ${firstBiz?.cardOrder?`
       <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Card Order</div>
+        <div style="font-size:12px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">Card Order</div>
         <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:8px">
           <span style="color:var(--lbl2)">Tap+ Branded</span>
           <span style="font-weight:600">${firstBiz.cardOrder.branded||0} cards</span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:10px">
           <span style="color:var(--lbl2)">Custom Printed</span>
           <span style="font-weight:600">${firstBiz.cardOrder.custom||0} cards</span>
         </div>
-        <div style="font-size:12px;color:var(--lbl3)">
-          Status: <span style="color:var(--brand);font-weight:500;text-transform:capitalize">${firstBiz.cardOrder.status||'pending'}</span>
-          ${firstBiz.cardOrder.orderedAt?` · Ordered ${new Date(firstBiz.cardOrder.orderedAt).toLocaleDateString()}`:''}
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12px;color:var(--lbl3)">
+            Status: <span style="color:var(--brand);font-weight:500;text-transform:capitalize">${firstBiz.cardOrder.status||'pending'}</span>
+          </div>
+          ${firstBiz.cardOrder.orderedAt?`<div style="font-size:12px;color:var(--lbl3)">${new Date(firstBiz.cardOrder.orderedAt).toLocaleDateString()}</div>`:''}
         </div>
       </div>`:''}
 
       <!-- Support -->
       <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px">
-        <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Support</div>
+        <div style="font-size:12px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Support</div>
         <div style="font-size:14px;color:var(--lbl2);line-height:1.6">
-          Questions about your subscription?<br/>
+          Questions about your plan?<br/>
           <a href="mailto:support@tapplus.top" style="color:var(--brand);text-decoration:none;font-weight:500">support@tapplus.top</a>
         </div>
       </div>`;
 
-    // Billing portal
     window._ownerPortal=async function(){
       if(!firstBiz?.id){showToast('No active subscription found');return;}
       showLoading('Loading billing…');
