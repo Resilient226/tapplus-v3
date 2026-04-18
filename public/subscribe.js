@@ -407,25 +407,28 @@ function _renderPlanSelect(biz) {
 function _renderCardSelector(biz, plan) {
   _subStyles();
 
-  const setupFees   = { pilot: 150, annual: 199, monthly: 249 };
-  const monthlyAmts = { pilot: 69,  annual: 89,  monthly: 109 };
-  const planNames   = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' };
-  const INCLUDED    = 12;
+  const setupFees      = { pilot: 150,  annual: 199,  monthly: 249 };
+  const monthlyAmts    = { pilot: 69,   annual: 89,   monthly: 109 };
+  // Annual plan bills full year upfront
+  const firstChargeAmt = { pilot: 69,   annual: 1068, monthly: 109 };
+  const firstChargeLabel = { pilot: 'First Month', annual: 'Annual Subscription', monthly: 'First Month' };
+  const planNames      = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' };
+  const INCLUDED       = 12;
 
   let branded = 0;
   let custom  = 0;
 
   function calcTotal() {
     const setup     = setupFees[plan];
-    const monthly   = monthlyAmts[plan];
+    const firstAmt  = firstChargeAmt[plan];
     const extraB    = Math.max(0, branded - INCLUDED) * 11.99;
     const extraC    = custom * 15.99;
     const cardTotal = extraB + extraC;
-    return { setup, monthly, cardTotal, total: setup + monthly + cardTotal };
+    return { setup, firstAmt, cardTotal, total: setup + firstAmt + cardTotal };
   }
 
   function render() {
-    const { setup, monthly, cardTotal, total } = calcTotal();
+    const { setup, firstAmt, cardTotal, total } = calcTotal();
     const extraB = Math.max(0, branded - INCLUDED);
     const extraC = custom;
 
@@ -475,8 +478,8 @@ function _renderCardSelector(biz, plan) {
         <div class="order-summary">
           <div style="font-size:13px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Order Summary</div>
           <div class="summary-row">
-            <span>${planNames[plan]} — First Month</span>
-            <span>$${monthly}.00</span>
+            <span>${planNames[plan]} — ${firstChargeLabel[plan]}</span>
+            <span>$${firstAmt.toFixed(2)}</span>
           </div>
           <div class="summary-row">
             <span>Setup Fee (incl. 12 cards)</span>
@@ -487,6 +490,11 @@ function _renderCardSelector(biz, plan) {
             <span>Extra Cards</span>
             <span>$${cardTotal.toFixed(2)}</span>
           </div>` : ''}
+          ${plan==='annual'?`
+          <div class="summary-row" style="color:var(--lbl3)">
+            <span>Renews annually</span>
+            <span>$1,068.00</span>
+          </div>`:''}
           <div class="summary-row total">
             <span>Due Today</span>
             <span>$${total.toFixed(2)}</span>
@@ -494,14 +502,18 @@ function _renderCardSelector(biz, plan) {
         </div>
 
         <div style="padding:0 16px;margin-bottom:8px;font-size:12px;color:var(--lbl4);text-align:center;line-height:1.6">
-          ${plan === 'pilot' ? 'World Cup Pilot locks in at $69/mo for 3 months, then converts to $109/mo monthly.' : ''}
-          ${plan === 'annual' ? 'After today, $1,068 will be billed annually.' : ''}
-          ${plan === 'monthly' ? 'After today, $109 will be billed monthly. Cancel anytime.' : ''}
+          <div style="font-size:12px;color:var(--lbl4);text-align:center;line-height:1.7">
+            ${plan==='pilot'
+              ? `Setup fee is one-time. Renews at $69/mo for 3 months, then $109/mo.`
+              : plan==='annual'
+              ? `Setup fee ($199) charged once today. Subscription ($1,068) renews automatically each year.`
+              : `Setup fee ($249) charged once today. Subscription ($109) renews monthly. Cancel anytime.`}
+          </div>
         </div>
 
         <div class="sub-footer">
           <button class="btn btn-primary btn-full" id="checkout-btn" onclick="window._checkout()" style="font-size:17px;padding:16px;border-radius:16px">
-            Pay $${total.toFixed(2)} →
+            Pay $${total.toFixed(2)} Today →
           </button>
           <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--lbl4)">
             🔒 Secured by Stripe
