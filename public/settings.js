@@ -15,9 +15,69 @@ function renderSettingsTab(body) {
     return { google:'G', yelp:'Y', tripadvisor:'TA', opentable:'OT', facebook:'FB', custom:'→' }[(p||'').toLowerCase()] || '→';
   }
 
+  let brandingOpen = false;
+
   function draw() {
     const avail = availablePlatforms();
+    const biz = State.biz;
+    const shifts = biz?.shifts || [];
+    const role = State.session?.role;
+    const isBizAdmin = role === 'bizAdmin' || role === 'superAdmin';
+
     body.innerHTML = `
+      <!-- ── General Section ─────────────────────────────── -->
+      <div class="sec-lbl">General</div>
+
+      <!-- Store Code -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:20px;margin-bottom:10px;text-align:center">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--lbl3);margin-bottom:8px">Store Code</div>
+        <div style="font-size:48px;font-weight:700;color:var(--brand);letter-spacing:.2em;font-variant-numeric:tabular-nums">${esc(biz?.storeCode||'----')}</div>
+        <div style="font-size:13px;color:var(--lbl3);margin-top:6px">Staff use this to log in</div>
+      </div>
+
+      <!-- Change PINs -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:18px;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">Change PINs</div>
+        <div style="font-size:13px;color:var(--lbl3);margin-bottom:16px">Leave blank to keep current</div>
+        ${isBizAdmin ? `
+        <div id="s-adminpin-wrap" style="margin-bottom:10px">
+          <div class="field-lbl">New Admin PIN (4-6 digits)</div>
+          <input class="inp" id="s-adminpin" type="number" inputmode="numeric" placeholder="Leave blank to keep" style="border-radius:var(--r-md)"/>
+        </div>` : ''}
+        <div style="margin-bottom:14px">
+          <div class="field-lbl">New Manager PIN (4-6 digits)</div>
+          <input class="inp" id="s-mgrpin" type="number" inputmode="numeric" placeholder="Leave blank to keep" style="border-radius:var(--r-md)"/>
+        </div>
+        <button class="btn btn-ghost btn-full" onclick="window._savePins()" style="border-radius:var(--r-lg)">Update PINs</button>
+      </div>
+
+      <!-- Shift Schedule -->
+      <div style="background:var(--bg2);border-radius:var(--r-lg);padding:18px;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">Shift Schedule</div>
+        <div style="font-size:13px;color:var(--lbl3);margin-bottom:16px">Define your recurring daily shifts</div>
+        <div id="s-shifts-list"></div>
+        <button class="btn btn-ghost btn-full" onclick="window._addShift()" style="border-radius:var(--r-lg)">+ Add Shift</button>
+      </div>
+
+      <!-- Branding toggle button -->
+      <div style="margin-bottom:10px">
+        <button onclick="window._toggleBranding()"
+          style="width:100%;background:var(--bg2);border:none;border-radius:var(--r-lg);
+                 padding:18px;display:flex;align-items:center;justify-content:space-between;
+                 cursor:pointer;font-family:inherit;color:var(--lbl)">
+          <div style="text-align:left">
+            <div style="font-size:16px;font-weight:600">Branding</div>
+            <div style="font-size:13px;color:var(--lbl3);margin-top:2px">Logo, colors, messages, review links</div>
+          </div>
+          <svg id="branding-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none"
+            style="transition:transform .25s;transform:${brandingOpen?'rotate(180deg)':'rotate(0deg)'}">
+            <path d="M4 6l4 4 4-4" stroke="rgba(255,255,255,.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Branding section (collapsible) -->
+      <div id="branding-section" style="display:${brandingOpen?'block':'none'}">
       <div class="plain-card" style="margin-bottom:10px">
         <div style="font-weight:600;font-size:15px;margin-bottom:16px">Branding</div>
 
@@ -102,27 +162,8 @@ function renderSettingsTab(body) {
         <div style="font-size:12px;color:var(--lbl2);margin-top:4px">Staff use this to log in</div>
       </div>
 
-      <button onclick="window._saveBranding()" class="btn btn-primary btn-full">Save Branding</button>
-
-      <div style="margin-top:20px;padding-top:20px;border-top:.5px solid var(--sep)">
-        <div style="font-weight:600;font-size:15px;margin-bottom:4px">Change PINs</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Leave blank to keep current</div>
-        <div id="s-adminpin-wrap">
-          <div class="field-lbl">New Admin PIN (4-6 digits)</div>
-          <input class="inp" id="s-adminpin" type="number" inputmode="numeric" placeholder="Leave blank to keep" style="margin-bottom:10px"/>
-        </div>
-        <div class="field-lbl">New Manager PIN (4-6 digits)</div>
-        <input class="inp" id="s-mgrpin" type="number" inputmode="numeric" placeholder="Leave blank to keep" style="margin-bottom:12px"/>
-        <button onclick="window._savePins()" class="btn btn-ghost btn-full">Update PINs</button>
-      </div>
-
-      ${role==='bizAdmin'||role==='owner'?`
-      <div style="margin-top:20px;padding-top:20px;border-top:.5px solid var(--sep)">
-        <div style="font-weight:600;font-size:15px;margin-bottom:4px">Shift Schedule</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Define your recurring daily shifts</div>
-        <div id="s-shifts-list" style="margin-bottom:10px"></div>
-        <button onclick="window._addShift()" class="btn btn-ghost btn-full">+ Add Shift</button>
-      </div>`:''}`;
+      <button onclick="window._saveBranding()" class="btn btn-primary btn-full" style="margin-bottom:16px;border-radius:var(--r-lg);padding:16px;font-size:17px">Save Branding</button>
+      </div><!-- end branding section -->`;
 
     // ── Bulletin board list ─────────────────────────────────────────────────
     function drawBulletin(){
@@ -447,6 +488,18 @@ function renderSettingsTab(body) {
       showToast('Branding saved');
       draw();
     }catch(e){showToast(e.message||'Save failed');}
+  };
+
+  window._toggleBranding = function() {
+    brandingOpen = !brandingOpen;
+    const sec = document.getElementById('branding-section');
+    const chev = document.getElementById('branding-chevron');
+    if (sec) sec.style.display = brandingOpen ? 'block' : 'none';
+    if (chev) chev.style.transform = brandingOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    if (brandingOpen) {
+      // Re-init shifts list since it's now visible
+      drawShiftsList && drawShiftsList();
+    }
   };
 
   draw();
