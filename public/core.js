@@ -318,18 +318,28 @@ function renderOwnerLogin(){
     if(!email||!pass){showToast('Enter email and password');return;}
     if(!fbAuth){showToast('Firebase not configured');return;}
     showLoading('Signing in…');
-    try{const c=await fbAuth.signInWithEmailAndPassword(email,pass);const t=await c.user.getIdToken();const d=await API.auth.loginOwner(t);State.session=d;
-        // Check if any business needs subscription
-        const firstBiz=d.businesses?.[0];
-        if(firstBiz){
-          const bd=await API.business.getById(firstBiz);
+    try{
+      const c=await fbAuth.signInWithEmailAndPassword(email,pass);
+      const t=await c.user.getIdToken();
+      const d=await API.auth.loginOwner(t);
+      State.session=d;
+      // Check first business for subscription status
+      const firstBizId=d.businesses?.[0];
+      if(firstBizId){
+        try{
+          const bd=await API.business.getById(firstBizId);
           State.biz=bd.business;
-          if(!bd.business.subscriptionStatus||bd.business.subscriptionStatus==='inactive'){
+          // Only redirect to subscribe if explicitly inactive
+          if(bd.business.subscriptionStatus==='inactive'){
             renderSubscribeFlow(bd.business);return;
           }
+        }catch(bizErr){
+          // Business lookup failed — still go to owner dashboard
+          console.warn('Business lookup failed:',bizErr.message);
         }
-        renderOwnerDashboard();}
-    catch(e){app().innerHTML='';renderOwnerLogin();showToast(e.message||'Sign in failed');}
+      }
+      renderOwnerDashboard();
+    }catch(e){app().innerHTML='';renderOwnerLogin();showToast(e.message||'Sign in failed');}
   };
   window._register=async function(){
     if(!fbAuth){fbAuth=window._fbAuth||null;}
