@@ -324,7 +324,9 @@ function renderOwnerLogin(){
       const d=await API.auth.loginOwner(t);
       State.session=d;
       // Check first business for subscription status
-      const firstBizId=d.businesses?.[0];
+      // businesses is array of {id, name, slug} objects from login
+      const firstBiz=d.businesses?.[0];
+      const firstBizId=firstBiz?.id || (typeof firstBiz==='string'?firstBiz:null);
       if(firstBizId){
         try{
           const bd=await API.business.getById(firstBizId);
@@ -334,7 +336,6 @@ function renderOwnerLogin(){
             renderSubscribeFlow(bd.business);return;
           }
         }catch(bizErr){
-          // Business lookup failed — still go to owner dashboard
           console.warn('Business lookup failed:',bizErr.message);
         }
       }
