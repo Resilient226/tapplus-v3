@@ -70,6 +70,13 @@ function renderDashboard(){
     State.session=null;
     State.staff=[];
     State.taps=[];
+    // Clear all remembered sessions on explicit sign out
+    ['staff','manager','bizAdmin'].forEach(r=>{
+      localStorage.removeItem('tp_remember_'+r);
+      localStorage.removeItem('tp_session_'+r);
+    });
+    localStorage.removeItem('tp_owner_remember');
+    localStorage.removeItem('tp_owner_session');
     // Keep State.biz so role select shows the right business
     renderRoleSelect();
   };
