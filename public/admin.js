@@ -1,3 +1,27 @@
+// Shared password reset using Firebase REST API — works without currentUser
+window._sendPasswordReset = async function(email) {
+  const apiKey = 'AIzaSyCRr397Iw_ZnmLB9Sw21bjx-05HP5bqa3g'; // Firebase web API key
+  try {
+    const res = await fetch(
+      'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=' + apiKey,
+      {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({requestType: 'PASSWORD_RESET', email})
+      }
+    );
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error.message || 'Failed to send reset email');
+    } else {
+      showToast('Reset email sent to ' + email, 3500);
+    }
+  } catch(e) {
+    showToast('Failed to send reset email');
+    console.error('Reset error:', e);
+  }
+};
+
 async function renderOwnerDashboard(){
   const sess=State.session;
   const bizIds=sess?.businesses||[];
@@ -7,6 +31,7 @@ async function renderOwnerDashboard(){
   showLoading('Loading…');
   let bizList=[];
   try{
+    // bizIds may be array of {id,name,slug} objects or plain strings
     const results=await Promise.allSettled(bizIds.map(b=>API.business.getById(b?.id||b)));
     bizList=results.filter(r=>r.status==='fulfilled').map(r=>r.value.business);
   }catch(e){}
@@ -28,21 +53,22 @@ async function renderOwnerDashboard(){
     '—';
   const totalLocations=bizList.length;
 
-  // FIX 2: Handle null currentUser — Firebase Auth state lost on reload without setPersistence
   window._ownerAddLocation = async function() {
     const auth = window._fbAuth || fbAuth;
-    if (!auth) {
-      showToast('Please sign out and sign back in to add a location');
-      return;
-    }
+    if (!auth) { showToast('Firebase not ready'); return; }
+
     showLoading('Preparing…');
     try {
-      if (!auth.currentUser) {
-        showToast('Session expired — please sign out and back in');
-        renderOwnerDashboard();
+      // currentUser may be null after page reload — use onAuthStateChanged to wait
+      const user = auth.currentUser || await new Promise((resolve) => {
+        const unsub = auth.onAuthStateChanged(u => { unsub(); resolve(u); });
+      });
+      if (!user) {
+        showToast('Session expired — please sign back in');
+        renderOwnerLogin();
         return;
       }
-      const idToken = await auth.currentUser.getIdToken(true);
+      const idToken = await user.getIdToken(true);
       renderCreateBusiness(idToken);
     } catch(e) {
       showToast(e.message || 'Failed — please sign out and back in');
@@ -50,6 +76,7 @@ async function renderOwnerDashboard(){
     }
   };
 
+  window._ownerBizList = bizList; // expose for inline onclicks
   function render(){
     app().innerHTML=`
       <div style="max-width:480px;margin:0 auto;padding:16px 16px 96px">
@@ -180,6 +207,7 @@ async function renderOwnerDashboard(){
 
   // ── Analytics tab ───────────────────────────────────────────────────────
   window._ownerAnalytics=function(body){
+    // Rollup stats
     const statTiles=[
       [totalTaps,'Total Taps','var(--brand)','rgba(0,229,160,.12)'],
       [avgRating+'★','Avg Rating','var(--ios-yellow)','rgba(255,214,10,.1)'],
@@ -187,6 +215,7 @@ async function renderOwnerDashboard(){
       [totalLocations,'Locations','var(--a-purple)','rgba(155,89,255,.1)'],
     ];
 
+    // Per-location breakdown
     const locationRows=bizList.map(b=>{
       const bTaps=allTaps.filter(t=>t.bizId===b.id);
       const bAvg=bTaps.length?(bTaps.reduce((s,t)=>s+(t.rating||0),0)/bTaps.length).toFixed(1):'—';
@@ -232,13 +261,6 @@ async function renderOwnerDashboard(){
     const planPrices={pilot:'$69/mo',annual:'$89/mo',monthly:'$109/mo'};
     const planColors={pilot:'var(--ios-orange)',annual:'var(--a-blue)',monthly:'var(--a-blue)'};
     const isActive=status==='active';
-
-    // FIX 1: Expose renderSubscribeFlow with firstBiz in scope — was calling
-    // renderSubscribeFlow(bizList[0]) from an onclick string where bizList is
-    // out of scope, causing "Can't find variable: renderSubscribeFlow"
-    window._ownerSubscribe = function() {
-      renderSubscribeFlow(firstBiz);
-    };
 
     // Calculate time remaining
     const subscribedAt=firstBiz?.subscribedAt||null;
@@ -293,7 +315,7 @@ async function renderOwnerDashboard(){
               ? 'Your subscription is inactive. Subscribe to reactivate your account.'
               : 'Subscribe to start collecting reviews, tracking staff, and growing your ratings.'}
           </div>
-          <button onclick="window._ownerSubscribe()"
+          <button onclick="renderSubscribeFlow(window._ownerBizList?.[0])"
             style="width:100%;background:var(--brand);border:none;border-radius:var(--r-lg);
                    padding:16px;font-size:17px;font-weight:700;color:#000;cursor:pointer;font-family:inherit">
             ${plan ? 'Reactivate Subscription →' : 'Choose a Plan →'}
@@ -320,7 +342,7 @@ async function renderOwnerDashboard(){
             </div>
             ${daysLeft<=7?`
             <div style="font-size:12px;color:var(--ios-red);margin-top:8px;font-weight:500">
-              Expiring soon — renew to avoid interruption
+              ⚠️ Expiring soon — renew to avoid interruption
             </div>`:''}
           </div>`:''}
 
@@ -384,20 +406,13 @@ async function renderOwnerDashboard(){
       <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px">
         <div style="font-size:12px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Support</div>
         <div style="font-size:14px;color:var(--lbl2);line-height:1.6">
-          Questions about your subscription?<br/>
+          Questions about your plan?<br/>
           <a href="mailto:support@tapplus.top" style="color:var(--brand);text-decoration:none;font-weight:500">support@tapplus.top</a>
         </div>
       </div>`;
 
-    // FIX 3: Guard against missing stripeCustomerId — was showing "No billing
-    // account found" toast because Stripe checkout was never completed
     window._ownerPortal=async function(){
-      if(!firstBiz?.id){showToast('No location found');return;}
-      if(!firstBiz?.stripeCustomerId){
-        showToast('No active subscription — choose a plan first');
-        window._ownerSubscribe();
-        return;
-      }
+      if(!firstBiz?.id){showToast('No active subscription found');return;}
       showLoading('Loading billing…');
       try{
         const res=await fetch('/api/subscribe?action=portal',{
@@ -489,7 +504,7 @@ function renderSuperAdminDashboard(){
     API.layout.get().then(data=>{
       const L=data.layouts;
       const SECTIONS={staff:['coaching','feedback','goals','stats','branding'],manager:['ai','analytics','team','staff','goals','estimator','branding2'],bizAdmin:['ai','analytics','team','staff','goals','branding2']};
-      const SLABELS={coaching:'Coaching',feedback:'Feedback',goals:'Goals',stats:'Stats',branding:'Branding',ai:'AI Insights',team:'Team',staff:'Staff',links:'Links',estimator:'Estimator',settings:'Settings',branding2:'Branding',analytics:'Analytics'};
+      const SLABELS={coaching:'Coaching',feedback:'Feedback',goals:'Goals',stats:'Stats',branding:'Branding',ai:'AI Insights',team:'Team',staff:'Staff',links:'Links',estimator:'Estimator',settings:'Settings',branding2:'Branding',analytics:'Analytics',analytics:'Analytics'};
       const layouts={staff:[...(L.staff||SECTIONS.staff)],manager:[...(L.manager||SECTIONS.manager)],bizAdmin:[...(L.bizAdmin||SECTIONS.bizAdmin)]};
       function drawLayouts(){
         $('sa-body').innerHTML=Object.entries(layouts).map(([role,order])=>`
@@ -523,6 +538,7 @@ async function saAccounts(body) {
   let allBiz = [];
 
   try {
+    // Fetch all Firebase Auth users via our API
     const [accRes, bizRes] = await Promise.all([
       fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } }),
       fetch('/api/business?listAll=1', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } })
@@ -536,6 +552,7 @@ async function saAccounts(body) {
     return;
   }
 
+  // Build a map of ownerId → businesses
   const ownerBizMap = {};
   allBiz.forEach(b => {
     if (!ownerBizMap[b.ownerId]) ownerBizMap[b.ownerId] = [];
@@ -556,6 +573,7 @@ async function saAccounts(body) {
         + Invite / Create Account
       </button>
 
+      <!-- Incomplete accounts -->
       ${incomplete.length > 0 ? `
       <div class="sec-lbl" style="color:var(--ios-orange)">Incomplete Setup (${incomplete.length})</div>
       <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px">
@@ -594,6 +612,7 @@ async function saAccounts(body) {
           </div>`).join('')}
       </div>` : ''}
 
+      <!-- Complete accounts -->
       <div class="sec-lbl">Active Accounts (${complete.length})</div>
       <div style="background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px">
         ${complete.length === 0
@@ -619,6 +638,7 @@ async function saAccounts(body) {
                 </div>
                 ${statusPill('Active', 'var(--brand)')}
               </div>
+              <!-- Their businesses -->
               ${bizzes.map(b => `
                 <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
                   background:var(--bg3);border-radius:var(--r-sm);margin-bottom:6px">
@@ -639,6 +659,7 @@ async function saAccounts(body) {
                     View
                   </button>
                 </div>`).join('')}
+              <!-- Account actions -->
               <div style="display:flex;gap:8px;margin-top:8px">
                 <button onclick="window._saResetPassword('${esc(u.email||'')}')"
                   style="flex:1;background:var(--fill);border:none;border-radius:var(--r-sm);
@@ -658,6 +679,7 @@ async function saAccounts(body) {
       </div>`;
   }
 
+  // ── Prompt incomplete account to finish setup ────────────────────────────
   window._saPromptSetup = function(uid, email) {
     showModal(`
       <div class="modal-head">
@@ -698,12 +720,13 @@ async function saAccounts(body) {
       closeModal();
       showLoading('Creating business…');
       try {
+        // Use SA token to create business for this owner
         const res = await fetch('/api/business', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + API.auth.getToken(),
-            'X-Owner-Id': ownerId
+            'X-Owner-Id': ownerId  // SA creating on behalf of owner
           },
           body: JSON.stringify({ name, adminPin, managerPin: mgrPin, ownerId })
         });
@@ -721,6 +744,7 @@ async function saAccounts(body) {
     };
   };
 
+  // ── Invite / create new account ─────────────────────────────────────────
   window._saInviteAccount = function() {
     showModal(`
       <div class="modal-head">
@@ -779,13 +803,17 @@ async function saAccounts(body) {
       showLoading('Creating account…');
 
       try {
+        // Create Firebase Auth user
         const savedSession = sessionStorage.getItem('tp_session');
         const auth = window._fbAuth || fbAuth;
         if (!auth) { showToast('Firebase not ready'); return; }
         const cred = await auth.createUserWithEmailAndPassword(email, pass);
+        const uid  = cred.user.uid;
+        // Restore SA session
         if (savedSession) sessionStorage.setItem('tp_session', savedSession);
 
         if (bizName && adminPin && mgrPin) {
+          // Also create business
           const idToken = await cred.user.getIdToken();
           const res = await fetch('/api/business', {
             method: 'POST',
@@ -801,6 +829,7 @@ async function saAccounts(body) {
         } else {
           showToast(`Account created for ${email}`);
         }
+        // Restore SA session
         if (savedSession) sessionStorage.setItem('tp_session', savedSession);
       } catch(e) {
         showToast(e.message || 'Failed');
@@ -810,8 +839,11 @@ async function saAccounts(body) {
     };
   };
 
+  // ── Delete account ──────────────────────────────────────────────────────
   window._saDeleteAccount = async function(uid, email) {
-    if (!confirm(`Delete account for ${email}?\n\nThis removes their login but NOT their business data.`)) return;
+    if (!confirm(`Delete account for ${email}?
+
+This removes their login but NOT their business data.`)) return;
     showLoading('Deleting account…');
     try {
       const res = await fetch('/api/accounts', {
@@ -835,26 +867,10 @@ async function saAccounts(body) {
     setTimeout(() => window._saT('accounts'), 400);
   };
 
-  // FIX 4: Better error handling and auth readiness check for reset password
+  // ── Reset password ───────────────────────────────────────────────────────
   window._saResetPassword = async function(email) {
     if (!email) { showToast('No email for this account'); return; }
-    const auth = window._fbAuth || fbAuth;
-    if (!auth || typeof auth.sendPasswordResetEmail !== 'function') {
-      showToast('Firebase not ready — please refresh and try again');
-      return;
-    }
-    try {
-      await auth.sendPasswordResetEmail(email);
-      showToast(`Reset email sent to ${email}`, 3500);
-    } catch(e) {
-      console.error('Reset pw error:', e.code, e.message);
-      const msgs = {
-        'auth/user-not-found':    'No account found with that email',
-        'auth/invalid-email':     'Invalid email address',
-        'auth/too-many-requests': 'Too many attempts — wait a few minutes',
-      };
-      showToast(msgs[e.code] || e.message || 'Failed to send reset email');
-    }
+    await window._sendPasswordReset(email);
   };
 
   draw();
@@ -867,8 +883,8 @@ async function saBiz() {
 
   var EMOJIS = ['🔍','⭐','🦉','🍽️','👍','📘','🔗','📍','🏆','💬','📱','🌐','🎯','✨','🏅'];
   var allBiz = [];
-  var openBizId = null;
-  var bizLinks  = {};
+  var openBizId = null; // which accordion is open
+  var bizLinks  = {};   // cache: bizId -> [{name,icon,url}]
 
   try {
     var saR = await fetch('/api/business?listAll=1', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
@@ -876,6 +892,7 @@ async function saBiz() {
     if (saD.businesses) {
       allBiz = saD.businesses;
     } else if (saD.error) {
+      // Show the actual error so we can debug
       if (body) body.innerHTML = `<div style="background:rgba(255,77,106,.1);border-radius:var(--r-lg);padding:20px;color:var(--ios-red);font-size:14px;line-height:1.6">
         <div style="font-weight:700;margin-bottom:6px">Failed to load businesses</div>
         <div style="font-family:monospace;font-size:12px;color:var(--lbl3)">${esc(saD.error)} (${saR.status})</div>
@@ -953,6 +970,7 @@ async function saBiz() {
     var btn = document.getElementById('btn-links-'+bizId);
     if (!acc) return;
 
+    // Close if already open
     if (openBizId === bizId) {
       acc.style.display = 'none';
       btn.style.background = 'rgba(255,255,255,.04)';
@@ -962,6 +980,7 @@ async function saBiz() {
       return;
     }
 
+    // Close any other open accordion
     if (openBizId) {
       var prev = document.getElementById('accordion-'+openBizId);
       var prevBtn = document.getElementById('btn-links-'+openBizId);
@@ -973,12 +992,14 @@ async function saBiz() {
       }
     }
 
+    // Open this one
     openBizId = bizId;
     acc.style.display = 'block';
     btn.style.background = 'rgba(0,229,160,.12)';
     btn.style.color = 'var(--brand)';
     btn.style.borderColor = 'rgba(0,229,160,.4)';
 
+    // Load data if not cached
     if (!bizLinks[bizId]) {
       try {
         var r = await API.business.getById(bizId);
@@ -994,6 +1015,7 @@ async function saBiz() {
   function renderAccordion(bizId) {
     var el = document.getElementById('links-body-'+bizId);
     if (!el) return;
+    var links = bizLinks[bizId] || [];
 
     el.innerHTML = `
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--lbl2);margin-bottom:12px">
@@ -1075,6 +1097,7 @@ async function saBiz() {
 
   window._saSaveLk = async function(bizId) {
     var links = bizLinks[bizId] || [];
+    // Validate
     for (var i = 0; i < links.length; i++) {
       if (!links[i].name) { showToast('Enter a name for each platform'); return; }
       if (!links[i].url)  { showToast('Enter a URL for each platform'); return; }
@@ -1092,16 +1115,22 @@ async function saBiz() {
   };
 
   window._saBizSettings = async function(bizId, bizName, ownerId) {
+    // Load current biz data + owner email
     showModal(`<div class="modal-head"><div class="modal-title">Business Settings</div><button class="modal-close" onclick="closeModal()">×</button></div><div style="padding:0 20px 8px"><div class="spinner" style="margin:20px auto"></div></div>`);
 
+    // Load owner email from accounts API
     let ownerEmail = '';
     let resolvedOwnerId = ownerId;
     try {
       const r = await fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
       const d = await r.json();
-      if (d.users && resolvedOwnerId) {
-        const owner = d.users.find(u => u.uid === resolvedOwnerId);
-        if (owner) ownerEmail = owner.email || '';
+      if (d.users && d.users.length > 0) {
+        if (resolvedOwnerId) {
+          // Find by UID
+          const owner = d.users.find(u => u.uid === resolvedOwnerId);
+          if (owner) ownerEmail = owner.email || '';
+        }
+        // If still no email found, ownerId may be stale — show all accounts for manual linking
       }
     } catch(e) { console.warn('Accounts lookup failed:', e.message); }
 
@@ -1112,6 +1141,7 @@ async function saBiz() {
       </div>
       <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:20px">
 
+        <!-- Owner email section -->
         <div>
           <div class="sec-lbl">Owner Account</div>
           <div style="background:var(--bg3);border-radius:var(--r-md);padding:14px 16px">
@@ -1128,7 +1158,8 @@ async function saBiz() {
                             cursor:pointer;font-family:inherit">Reset Password</button>
                  </div>`
               : `<div style="font-size:13px;color:var(--lbl3);margin-bottom:12px;line-height:1.5">
-                   No owner account linked.
+                   No owner account linked. This happens when a business was created
+                   directly or before account tracking was added.
                  </div>
                  <button onclick="window._saLinkAccount('${bizId}')"
                    style="width:100%;background:var(--fill);border:none;border-radius:var(--r-sm);
@@ -1139,6 +1170,7 @@ async function saBiz() {
           </div>
         </div>
 
+        <!-- PINs section -->
         <div>
           <div class="sec-lbl">PINs</div>
           <div style="background:var(--bg3);border-radius:var(--r-md);padding:14px 16px;display:flex;flex-direction:column;gap:12px">
@@ -1158,6 +1190,7 @@ async function saBiz() {
           </div>
         </div>
 
+        <!-- Danger zone -->
         <div>
           <div class="sec-lbl" style="color:var(--ios-red)">Danger Zone</div>
           <div style="background:rgba(255,77,106,.06);border:.5px solid rgba(255,77,106,.2);border-radius:var(--r-md);padding:14px 16px">
@@ -1211,29 +1244,13 @@ async function saBiz() {
       }).catch(() => showToast('Failed'));
     };
 
-    // FIX 4 (also in settings modal): same improved reset password
     window._saResetPw = async function(email) {
-      const auth = window._fbAuth || fbAuth;
-      if (!auth || typeof auth.sendPasswordResetEmail !== 'function') {
-        showToast('Firebase not ready — please refresh and try again');
-        return;
-      }
       if (!email) { showToast('No email address found'); return; }
-      try {
-        await auth.sendPasswordResetEmail(email);
-        showToast('Reset email sent to ' + email, 3500);
-      } catch(e) {
-        console.error('Reset pw error:', e.code, e.message);
-        const msgs = {
-          'auth/user-not-found':    'No account found with that email',
-          'auth/invalid-email':     'Invalid email address',
-          'auth/too-many-requests': 'Too many attempts — wait a few minutes',
-        };
-        showToast(msgs[e.code] || e.message || 'Failed to send reset email');
-      }
+      await window._sendPasswordReset(email);
     };
 
     window._saLinkAccount = async function(bId) {
+      // Load all accounts and show a picker
       let users = [];
       try {
         const r = await fetch('/api/accounts', { headers: { 'Authorization': 'Bearer ' + API.auth.getToken() } });
@@ -1313,7 +1330,9 @@ async function saBiz() {
     if (!confirm('Delete ' + name + ' AND the owner account? This cannot be undone.')) return;
     showLoading('Deleting…');
     try {
+      // Delete business data first
       await API.business.delete(id);
+      // Delete Firebase Auth account if ownerId exists
       if (ownerId) {
         try {
           await fetch('/api/accounts', {
@@ -1326,6 +1345,7 @@ async function saBiz() {
           });
         } catch(e) {
           console.warn('Auth account deletion failed:', e.message);
+          // Don't block on this — business is already deleted
         }
       }
       showToast(name + ' deleted');
