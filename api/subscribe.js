@@ -21,10 +21,10 @@ const PLANS = {
   },
   annual: {
     name:        'Annual',
-    price:       8900,       // $89/month = $1,068/year
+    price:       106800,     // $1,068/year (= $89 x 12)
     interval:    'year',
     setupFee:    19900,      // $199
-    description: 'Best value — billed annually',
+    description: 'Best value — billed $1,068/year ($89/mo)',
   },
   monthly: {
     name:        'Monthly',
