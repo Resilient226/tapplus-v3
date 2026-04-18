@@ -687,7 +687,24 @@ async function renderCongratsScreen(sessionId, bizId) {
   };
 
   window._goDashboard = function() {
-    renderDashboard();
+    // Try to restore session — owner was redirected away by Stripe
+    const saved = API.auth.getSession();
+    if (saved?.token) {
+      State.session = saved;
+      // If owner role, go to owner dashboard
+      if (saved.role === 'owner') {
+        renderOwnerDashboard();
+        return;
+      }
+      // Otherwise load biz data and go to regular dashboard
+      if (saved.bizId) {
+        State.biz = State.biz || { id: saved.bizId };
+        loadDashboardData().then(() => renderDashboard());
+        return;
+      }
+    }
+    // Fallback — go home and let them log back in
+    renderHome();
   };
 }
 
