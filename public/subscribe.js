@@ -718,4 +718,3 @@ function handleSuccessRoute() {
   } else {
     renderHome();
   }
-}
