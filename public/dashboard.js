@@ -2,7 +2,7 @@ function renderDashboard(){
   const {session:sess,biz,staff,taps,layout}=State;
   const role=sess?.role;
   const me=role==='staff'?staff.find(s=>s.id===sess?.staffId):null;
-  const defaults={staff:['coaching','feedback','goals','stats','branding'],manager:['ai','analytics','team','staff','goals','estimator','branding2'],bizAdmin:['ai','analytics','team','staff','goals','branding2']};
+  const defaults={staff:['coaching','feedback','goals','stats','branding'],manager:['ai','analytics','team','staff','goals','settings'],bizAdmin:['ai','analytics','team','staff','goals','settings']};
   const sections=layout?.[role]||defaults[role]||defaults.staff;
   const LABELS={coaching:'Coaching',feedback:'Feedback',goals:'Goals',stats:'Stats',branding:'Branding',ai:'AI Insights',team:'Team',staff:'Staff',links:'Links',estimator:'Estimator',settings:'Settings',branding2:'Branding',analytics:'Analytics',analytics:'Analytics'};
   let active=sections[0];
@@ -44,10 +44,15 @@ function renderDashboard(){
     sections.forEach(x=>{const b=$('tab-'+x);if(b)b.className='tab'+(x===s?' active':'');});
     const body=$('dash-body');if(!body)return;
     body.classList.remove('fade-up');void body.offsetWidth;body.classList.add('fade-up');
+    body.innerHTML='';
     switch(s){
       case 'coaching':  body.innerHTML=renderCoachingTab(me);break;
       case 'feedback':  body.innerHTML=renderFeedbackTab(me);break;
-      case 'goals':     body.innerHTML=renderGoalsTab(me);break;
+      case 'goals': {
+        const gHtml = renderGoalsTab(me);
+        if (gHtml) body.innerHTML = gHtml;
+        break;
+      }
       case 'stats':     body.innerHTML=renderStatsTab(me);break;
       case 'branding':  renderBrandingTab(body,me);break;
       case 'ai':        renderAITab(body);break;
