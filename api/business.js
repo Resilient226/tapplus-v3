@@ -103,14 +103,26 @@ module.exports = async function handler(req, res) {
   // ── POST — Create business ───────────────────────────────────────────────
   if (req.method === 'POST') {
     const authHeader = req.headers['authorization'] || '';
-    const idToken    = authHeader.replace('Bearer ', '').trim();
+    const token      = authHeader.replace('Bearer ', '').trim();
 
     let uid_;
+
+    // Try Firebase ID token first, then fall back to our JWT session token
     try {
-      const decoded = await auth.verifyIdToken(idToken);
+      const decoded = await auth.verifyIdToken(token);
       uid_ = decoded.uid;
     } catch {
-      return err(res, 'Invalid Firebase Auth token', 401);
+      // Not a Firebase token — try our JWT session token
+      try {
+        const session = getSession(req);
+        if (session && (session.role === 'owner' || session.role === 'bizAdmin' || session.role === 'superAdmin')) {
+          // Use UID from session, or from body if SA is creating for owner
+          uid_ = session.uid || req.body?.ownerUid;
+        }
+        if (!uid_) return err(res, 'Invalid Firebase Auth token', 401);
+      } catch {
+        return err(res, 'Invalid Firebase Auth token', 401);
+      }
     }
 
     const { name, adminPin, managerPin } = req.body || {};
