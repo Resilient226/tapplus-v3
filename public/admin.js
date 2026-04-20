@@ -1,24 +1,28 @@
 // Shared password reset using Firebase REST API — works without currentUser
 window._sendPasswordReset = async function(email) {
-  const apiKey = 'AIzaSyCRr397Iw_ZnmLB9Sw21bjx-05HP5bqa3g'; // Firebase web API key
+  if (!email) { showToast('No email provided'); return; }
+  const apiKey = 'AIzaSyCRr397Iw_ZnmLB9Sw21bjx-05HP5bqa3g';
+  showLoading('Sending reset email…');
   try {
     const res = await fetch(
       'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=' + apiKey,
       {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({requestType: 'PASSWORD_RESET', email})
+        body: JSON.stringify({ requestType: 'PASSWORD_RESET', email: email.trim() })
       }
     );
     const data = await res.json();
     if (data.error) {
-      showToast(data.error.message || 'Failed to send reset email');
+      const msg = data.error.message || 'Unknown error';
+      showToast('Error: ' + msg);
+      console.error('Reset error:', data.error);
     } else {
-      showToast('Reset email sent to ' + email, 3500);
+      showToast('Reset email sent to ' + email + ' — check spam folder', 4000);
     }
   } catch(e) {
-    showToast('Failed to send reset email');
-    console.error('Reset error:', e);
+    showToast('Network error — try again');
+    console.error('Reset fetch error:', e);
   }
 };
 
@@ -53,28 +57,69 @@ async function renderOwnerDashboard(){
     '—';
   const totalLocations=bizList.length;
 
-  window._ownerAddLocation = async function() {
-    const auth = window._fbAuth || fbAuth;
-    if (!auth) { showToast('Firebase not ready'); return; }
+  window._ownerAddLocation = function() {
+    // Show new location form — no Firebase token needed
+    // Business creation uses owner's JWT session token
+    const ownerUid = sess?.uid || State.session?.uid || '';
+    app().innerHTML = `
+      <div style="max-width:400px;margin:0 auto;padding:72px 20px 40px">
+        <button onclick="renderOwnerDashboard()"
+          style="background:none;border:none;color:var(--brand);font-size:17px;
+                 cursor:pointer;font-family:inherit;margin-bottom:28px;padding:0;display:block">
+          ← Back
+        </button>
+        <div style="font-size:28px;font-weight:700;letter-spacing:-.04em;margin-bottom:6px">New Location</div>
+        <div style="font-size:15px;color:var(--lbl3);margin-bottom:8px">Set up a new Tap+ location.</div>
+        <div style="font-size:14px;color:var(--brand);font-weight:500;margin-bottom:32px">A setup fee and subscription apply.</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="field-lbl">Location Name</div>
+            <input class="inp" id="nl-name" placeholder="e.g. Low Country Kitchen — ATL"/>
+          </div>
+          <div>
+            <div class="field-lbl">Admin PIN (4-6 digits)</div>
+            <input class="inp" id="nl-admin" type="number" inputmode="numeric" placeholder="e.g. 1234"/>
+          </div>
+          <div>
+            <div class="field-lbl">Manager PIN (4-6 digits)</div>
+            <input class="inp" id="nl-mgr" type="number" inputmode="numeric" placeholder="e.g. 5678"/>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._nlCreate()"
+            style="font-size:17px;padding:17px;border-radius:var(--r-lg);margin-top:8px">
+            Continue to Payment →
+          </button>
+        </div>
+      </div>`;
 
-    showLoading('Preparing…');
-    try {
-      // currentUser may be null after page reload — use onAuthStateChanged to wait
-      const user = auth.currentUser || await new Promise((resolve) => {
-        const unsub = auth.onAuthStateChanged(u => { unsub(); resolve(u); });
-      });
-      if (!user) {
-        showToast('Session expired — please sign back in');
-        renderOwnerLogin();
-        return;
+    window._nlCreate = async function() {
+      const name     = document.getElementById('nl-name')?.value?.trim();
+      const adminPin = document.getElementById('nl-admin')?.value?.trim();
+      const mgrPin   = document.getElementById('nl-mgr')?.value?.trim();
+      if (!name)                         { showToast('Enter location name'); return; }
+      if (!adminPin || adminPin.length < 4) { showToast('Admin PIN must be 4+ digits'); return; }
+      if (!mgrPin   || mgrPin.length < 4)   { showToast('Manager PIN must be 4+ digits'); return; }
+      if (adminPin === mgrPin)           { showToast('PINs must be different'); return; }
+      showLoading('Creating location…');
+      try {
+        // Use the owner's existing JWT session token
+        const token = API.auth.getToken();
+        const res = await fetch('/api/business', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ name, adminPin, managerPin: mgrPin })
+        });
+        const d = await res.json();
+        if (!d.success && !d.business) throw new Error(d.error || 'Failed to create');
+        State.biz = d.business;
+        showToast('Location created! Code: ' + d.business.storeCode, 3000);
+        renderSubscribeFlow(d.business);
+      } catch(e) {
+        showToast(e.message || 'Failed');
+        renderOwnerDashboard();
       }
-      const idToken = await user.getIdToken(true);
-      renderCreateBusiness(idToken);
-    } catch(e) {
-      showToast(e.message || 'Failed — please sign out and back in');
-      renderOwnerDashboard();
-    }
+    };
   };
+
 
   window._ownerBizList = bizList; // expose for inline onclicks
   function render(){
