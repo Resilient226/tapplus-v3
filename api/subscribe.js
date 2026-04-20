@@ -4,12 +4,12 @@ const { db } = require('../lib/firebase');
 const { handleCors, ok, err } = require('../lib/utils');
 
 const PLANS = {
-  pilot:   { name: 'World Cup Pilot', price: 6900,   interval: 'month', setupFee: 15000, description: '3-month pilot, locks in World Cup pricing' },
-  annual:  { name: 'Annual',          price: 106800,  interval: 'year',  setupFee: 19900, description: 'Best value — billed $1,068/year ($89/mo)' },
+  pilot:   { name: 'World Cup Pilot', price: 6900,  interval: 'month', setupFee: 15000, description: '3-month pilot, locks in World Cup pricing' },
+  annual:  { name: 'Annual',          price: 106800, interval: 'year',  setupFee: 19900, description: 'Best value — billed $1,068/year ($89/mo)' },
   monthly: { name: 'Monthly',         price: 10900,  interval: 'month', setupFee: 24900, description: 'No commitment, billed monthly' },
 };
 
-const CARD_PRICES   = { branded: 1199, custom: 1599 };
+const CARD_PRICES    = { branded: 1199, custom: 1599 };
 const CARDS_INCLUDED = 12;
 
 module.exports = async function handler(req, res) {
@@ -34,9 +34,9 @@ module.exports = async function handler(req, res) {
         subscribedAt: Date.now(),
         trialEndsAt: session.metadata.plan === 'pilot' ? Date.now() + (90 * 24 * 60 * 60 * 1000) : null,
         cardOrder: {
-          branded: parseInt(session.metadata.brandedCards || 0),
-          custom:  parseInt(session.metadata.customCards  || 0),
-          status: 'pending',
+          branded:   parseInt(session.metadata.brandedCards || 0),
+          custom:    parseInt(session.metadata.customCards  || 0),
+          status:    'pending',
           orderedAt: Date.now(),
         },
       });
@@ -76,39 +76,41 @@ module.exports = async function handler(req, res) {
   if (!plan || !PLANS[plan]) return err(res, 'Invalid plan');
   if (!bizId) return err(res, 'bizId required');
 
-  const planConfig  = PLANS[plan];
+  const planConfig   = PLANS[plan];
   const extraBranded = Math.max(0, brandedCards - CARDS_INCLUDED);
   const extraCustom  = Math.max(0, customCards);
 
-  // Recurring subscription line item
-  const lineItems = [{
-    price_data: {
-      currency: 'usd',
-      product_data: { name: `Tap+ ${planConfig.name}`, description: planConfig.description },
-      unit_amount: planConfig.price,
-      recurring: { interval: planConfig.interval },
-    },
-    quantity: 1,
-  }];
-
-  // One-time setup fee + extra cards billed on first invoice
-  const add_invoice_items = [{
-    price_data: {
-      currency: 'usd',
-      product_data: {
-        name: `${planConfig.name} — Setup Fee`,
-        description: `Includes ${CARDS_INCLUDED} Tap+ branded cards`,
-      },
-      unit_amount: planConfig.setupFee,
-    },
-    quantity: 1,
-  }];
-
-  if (extraBranded > 0) {
-    add_invoice_items.push({
+  // In subscription mode, one-time line items appear on the first invoice only
+  const lineItems = [
+    // Recurring subscription
+    {
       price_data: {
         currency: 'usd',
-        product_data: { name: 'Tap+ Branded Cards' },
+        product_data: { name: `Tap+ ${planConfig.name}`, description: planConfig.description },
+        unit_amount: planConfig.price,
+        recurring: { interval: planConfig.interval },
+      },
+      quantity: 1,
+    },
+    // One-time setup fee (first invoice only)
+    {
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: `${planConfig.name} — Setup Fee`,
+          description: `Includes ${CARDS_INCLUDED} Tap+ branded cards`,
+        },
+        unit_amount: planConfig.setupFee,
+      },
+      quantity: 1,
+    },
+  ];
+
+  if (extraBranded > 0) {
+    lineItems.push({
+      price_data: {
+        currency: 'usd',
+        product_data: { name: 'Tap+ Branded Cards', description: 'NFC review cards — Tap+ design' },
         unit_amount: CARD_PRICES.branded,
       },
       quantity: extraBranded,
@@ -116,10 +118,10 @@ module.exports = async function handler(req, res) {
   }
 
   if (extraCustom > 0) {
-    add_invoice_items.push({
+    lineItems.push({
       price_data: {
         currency: 'usd',
-        product_data: { name: 'Custom Printed Cards' },
+        product_data: { name: 'Custom Printed Cards', description: 'NFC review cards — your branding' },
         unit_amount: CARD_PRICES.custom,
       },
       quantity: extraCustom,
@@ -131,7 +133,6 @@ module.exports = async function handler(req, res) {
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: lineItems,
-      add_invoice_items,           // ← top-level, not inside subscription_data
       subscription_data: {
         metadata: { bizId, plan },
       },
@@ -139,13 +140,13 @@ module.exports = async function handler(req, res) {
       cancel_url:  cancelUrl  || `${process.env.APP_URL}/subscribe?biz=${bizId}`,
       metadata: {
         bizId,
-        bizName: bizName || '',
+        bizName:      bizName || '',
         plan,
         brandedCards: String(brandedCards),
         customCards:  String(customCards),
       },
-      allow_promotion_codes:        true,
-      billing_address_collection:   'required',
+      allow_promotion_codes:      true,
+      billing_address_collection: 'required',
     });
 
     return ok(res, { url: session.url, sessionId: session.id });
