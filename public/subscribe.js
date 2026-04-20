@@ -70,6 +70,8 @@ function _subStyles() {
 // ── Plan Select ───────────────────────────────────────────────────────────────
 function _renderPlanSelect(biz) {
   _subStyles();
+  // Capture bizId at plan select time so it's always available at checkout
+  const capturedBizId = biz?.id || State.biz?.id || null;
   let selected = 'pilot';
 
   function render() {
@@ -143,24 +145,36 @@ function _renderPlanSelect(biz) {
       </div>`;
 
     window._selectPlan = function(p) { selected = p; render(); };
-    window._planNext = function() { _renderCardSelector(biz, selected); };
+    window._planNext = function() { _renderCardSelector(biz, selected, capturedBizId); };
   }
 
   render();
 }
 
 // ── Card Selector ─────────────────────────────────────────────────────────────
-function _renderCardSelector(biz, plan) {
+function _renderCardSelector(biz, plan, capturedBizId) {
   _subStyles();
 
-  const setupFees      = { pilot: 150,  annual: 199,  monthly: 249  };
-  const firstChargeAmt = { pilot: 69,   annual: 1068, monthly: 109  };
+  const setupFees        = { pilot: 150,  annual: 199,  monthly: 249  };
+  const firstChargeAmt   = { pilot: 69,   annual: 1068, monthly: 109  };
   const firstChargeLabel = { pilot: 'First Month', annual: 'Annual Subscription', monthly: 'First Month' };
-  const planNames      = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' };
+  const planNames        = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' };
   const INCLUDED = 12;
 
   let branded = 0;
   let custom  = 0;
+
+  // Resolve bizId once here — don't rely on State.biz being set at button-click time
+  const bizId = capturedBizId
+    || biz?.id
+    || State.biz?.id
+    || (() => {
+         const b = State.session?.businesses?.[0];
+         return b?.id || (typeof b === 'string' ? b : null);
+       })()
+    || null;
+
+  const bizName = biz?.name || State.biz?.name || '';
 
   function calcTotal() {
     const setup     = setupFees[plan];
@@ -175,6 +189,7 @@ function _renderCardSelector(biz, plan) {
     const { setup, firstAmt, cardTotal, total } = calcTotal();
     const extraB = Math.max(0, branded - INCLUDED);
     const extraC = custom;
+    const totalStr = total.toFixed(2);
 
     app().innerHTML = `
       <div class="sub-page fade-up">
@@ -227,13 +242,11 @@ function _renderCardSelector(biz, plan) {
             <span>Setup Fee (incl. 12 cards)</span>
             <span>$${setup}.00</span>
           </div>
-          ${cardTotal > 0 ? `
-            <div class="summary-row"><span>Extra Cards</span><span>$${cardTotal.toFixed(2)}</span></div>` : ''}
-          ${plan === 'annual' ? `
-            <div class="summary-row" style="color:var(--lbl3)"><span>Renews annually</span><span>$1,068.00</span></div>` : ''}
+          ${cardTotal > 0 ? `<div class="summary-row"><span>Extra Cards</span><span>$${cardTotal.toFixed(2)}</span></div>` : ''}
+          ${plan === 'annual' ? `<div class="summary-row" style="color:var(--lbl3)"><span>Renews annually</span><span>$1,068.00</span></div>` : ''}
           <div class="summary-row total">
             <span>Due Today</span>
-            <span>$${total.toFixed(2)}</span>
+            <span>$${totalStr}</span>
           </div>
         </div>
 
@@ -249,7 +262,7 @@ function _renderCardSelector(biz, plan) {
 
         <div class="sub-footer">
           <button class="btn btn-primary btn-full" id="checkout-btn" onclick="window._checkout()" style="font-size:17px;padding:16px;border-radius:16px">
-            Pay $${total.toFixed(2)} Today →
+            Pay $${totalStr} Today →
           </button>
           <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--lbl4)">
             🔒 Secured by Stripe
@@ -265,35 +278,42 @@ function _renderCardSelector(biz, plan) {
 
     window._checkout = async function() {
       const btn = document.getElementById('checkout-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+
+      // Guard: must have a bizId
+      if (!bizId) {
+        showToast('Session error — please sign out and back in');
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to Stripe…'; }
+
       try {
-        const bizId   = State.biz?.id || State.session?.businesses?.[0]?.id || State.session?.businesses?.[0];
-        const bizName = State.biz?.name || '';
-        const origin  = window.location.origin;
-
-        if (!bizId) { showToast('No business found — please sign in again'); if (btn) { btn.disabled = false; } return; }
-
+        const origin = window.location.origin;
         const res = await fetch('/api/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            plan, bizId, bizName,
+            plan,
+            bizId,
+            bizName,
             brandedCards: branded,
-            customCards: custom,
+            customCards:  custom,
             successUrl: `${origin}/success?session_id={CHECKOUT_SESSION_ID}&biz=${bizId}`,
             cancelUrl:  `${origin}/subscribe`,
           }),
         });
+
         const data = await res.json();
+
         if (data.url) {
           window.location.href = data.url;
         } else {
-          showToast(data.error || 'Checkout failed');
-          if (btn) { btn.disabled = false; btn.textContent = `Pay $${total.toFixed(2)} Today →`; }
+          showToast(data.error || 'Checkout failed — please try again');
+          if (btn) { btn.disabled = false; btn.textContent = `Pay $${totalStr} Today →`; }
         }
       } catch(e) {
-        showToast('Something went wrong');
-        if (btn) { btn.disabled = false; }
+        showToast('Network error — please check your connection');
+        if (btn) { btn.disabled = false; btn.textContent = `Pay $${totalStr} Today →`; }
       }
     };
   }
@@ -311,28 +331,25 @@ async function renderCongratsScreen(sessionId, bizId) {
       <div style="margin-top:14px;color:var(--lbl3);font-size:14px">Activating your account…</div>
     </div>`;
 
-  let planName = 'your plan';
+  let planName  = 'your plan';
   let cardOrder = { branded: 0, custom: 0 };
 
   try {
-    const res = await fetch('/api/subscribe?action=verify', {
+    const res  = await fetch('/api/subscribe?action=verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, bizId }),
     });
     const data = await res.json();
-    if (data.plan) planName = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' }[data.plan] || data.plan;
+    if (data.plan)      planName  = { pilot: 'World Cup Pilot', annual: 'Annual', monthly: 'Monthly' }[data.plan] || data.plan;
     if (data.cardOrder) cardOrder = data.cardOrder;
   } catch(e) { console.error('Verify error:', e); }
 
   const totalCards = (cardOrder.branded || 0) + (cardOrder.custom || 0);
-  const colors = ['#00e5a0','#ff9f0a','#0a84ff','#bf5af2','#ff453a'];
-  const dots = Array.from({ length: 20 }, (_, i) => {
+  const colors     = ['#00e5a0','#ff9f0a','#0a84ff','#bf5af2','#ff453a'];
+  const dots       = Array.from({ length: 20 }, (_, i) => {
     const color = colors[i % colors.length];
-    const left  = Math.random() * 100;
-    const delay = Math.random() * 2;
-    const dur   = 2 + Math.random() * 2;
-    return `<div class="confetti-dot" style="left:${left}%;background:${color};animation-delay:${delay}s;animation-duration:${dur}s;top:-10px"></div>`;
+    return `<div class="confetti-dot" style="left:${Math.random()*100}%;background:${color};animation-delay:${Math.random()*2}s;animation-duration:${2+Math.random()*2}s;top:-10px"></div>`;
   }).join('');
 
   app().innerHTML = `
@@ -346,19 +363,19 @@ async function renderCongratsScreen(sessionId, bizId) {
       <div style="width:100%;max-width:360px;text-align:left">
         <div style="font-size:13px;font-weight:500;color:var(--lbl3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-left:2px">Get started</div>
         <div class="progress-bar-wrap"><div class="progress-bar-fill" id="onboard-bar" style="width:0%"></div></div>
-        <div class="ios-group" id="checklist">
+        <div class="ios-group">
           <div class="checklist-item" onclick="window._onboardStep('branding')">
-            <div class="check-circle" id="cc-branding">✓</div>
+            <div class="check-circle done" id="cc-branding">✓</div>
             <div><div class="check-label">Set up your branding</div><div class="check-sub">Logo, colors, and welcome message</div></div>
             <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(235,235,245,.28)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
           <div class="checklist-item" onclick="window._onboardStep('links')">
-            <div class="check-circle" id="cc-links"></div>
+            <div class="check-circle"></div>
             <div><div class="check-label">Add review links</div><div class="check-sub">Google, Yelp, TripAdvisor</div></div>
             <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(235,235,245,.28)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
           <div class="checklist-item" onclick="window._onboardStep('staff')">
-            <div class="check-circle" id="cc-staff"></div>
+            <div class="check-circle"></div>
             <div><div class="check-label">Add your first staff member</div><div class="check-sub">They'll get their own tap card</div></div>
             <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="rgba(235,235,245,.28)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
@@ -379,8 +396,6 @@ async function renderCongratsScreen(sessionId, bizId) {
   setTimeout(() => {
     const bar = document.getElementById('onboard-bar');
     if (bar) bar.style.width = '25%';
-    const cc = document.getElementById('cc-branding');
-    if (cc) cc.classList.add('done');
   }, 400);
 
   window._onboardStep = function(step) {
