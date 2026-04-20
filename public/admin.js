@@ -845,4 +845,3 @@ async function saBiz() {
   };
 
   draw(allBiz);
-}
