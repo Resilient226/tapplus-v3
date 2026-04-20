@@ -581,3 +581,4 @@ async function loadDashboardData(){
   if(s.status==='fulfilled')State.staff=s.value.staff||[];
   if(t.status==='fulfilled')State.taps=t.value.taps||[];
   if(l.status==='fulfilled')State.layout=l.value.layouts;
+}
