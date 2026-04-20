@@ -3,14 +3,12 @@
 var fbAuth = window._fbAuth || null;
 
 const State = { session:null, biz:null, staff:[], taps:[], layout:null };
-
-const app  = () => document.getElementById('app');
-const $    = (id) => document.getElementById(id);
-const esc  = (s) => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
+const app = () => document.getElementById('app');
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let _tt;
 
-// ── Saved location (persists across sessions) ─────────────────────────────────
+// ── Saved location ────────────────────────────────────────────────────────────
 const SAVED_BIZ_KEY = 'tp_saved_biz';
 function getSavedBiz() { try { const r=localStorage.getItem(SAVED_BIZ_KEY); return r?JSON.parse(r):null; } catch { return null; } }
 function saveLocation(biz) { try { localStorage.setItem(SAVED_BIZ_KEY, JSON.stringify({id:biz.id,name:biz.name,slug:biz.slug,storeCode:biz.storeCode,branding:biz.branding||{}})); } catch {} }
@@ -34,6 +32,7 @@ function staffAvatar(s,size=40){
   if(s.photo)return`<img src="${esc(s.photo)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0"/>`;
   return`<div style="width:${size}px;height:${size}px;border-radius:50%;background:${esc(s.color||'#00e5a0')}22;border:2px solid ${esc(s.color||'#00e5a0')};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(size*.35)}px;color:${esc(s.color||'#00e5a0')};flex-shrink:0">${staffIni(s)}</div>`;
 }
+
 function timeAgo(ts){const d=Date.now()-ts;if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago';}
 
 // ── AI ────────────────────────────────────────────────────────────────────────
@@ -56,30 +55,27 @@ function renderAIBlock(id,prompt,key){
 // ── Router ────────────────────────────────────────────────────────────────────
 async function route(){
   var ld=document.getElementById('loading');
-  // Minimum display time — let the ripple play for at least 3 seconds
   const _loadStart = window._appLoadStart || Date.now();
   const _elapsed = Date.now() - _loadStart;
-  const _minDisplay = 2500; // ms
+  const _minDisplay = 2500;
   const _remaining = Math.max(0, _minDisplay - _elapsed);
-  // Return a promise that resolves after loading screen hides
+
   window._afterLoad = new Promise(function(resolve){
     if(ld){
       setTimeout(function(){
         ld.classList.add('hidden');
-        setTimeout(function(){
-          ld.style.display='none';
-          resolve();
-        }, 600);
+        setTimeout(function(){ ld.style.display='none'; resolve(); }, 600);
       }, _remaining);
     } else { resolve(); }
   });
+
   const parts=location.pathname.split('/').filter(Boolean);
   if(parts.length>=3&&parts[1]==='tap')return renderTapPage(parts[0],parts[2]);
   if(parts.length>=2&&parts[1]==='dashboard')return renderDashboardEntry(parts[0]);
   if(location.pathname==='/success')return handleSuccessRoute();
   if(location.pathname==='/subscribe')return renderSubscribeFlow();
-  // Check for saved location — skip code entry
-  // Check for remembered owner session
+
+  // Remembered owner session
   const ownerRem = localStorage.getItem('tp_owner_remember');
   if(ownerRem){
     const ownerSaved = localStorage.getItem('tp_owner_session');
@@ -95,7 +91,7 @@ async function route(){
     }
   }
 
-  // Check for remembered PIN sessions
+  // Remembered PIN sessions
   const roles = ['staff','manager','bizAdmin'];
   for(const r of roles){
     const rem = localStorage.getItem('tp_remember_'+r);
@@ -104,7 +100,6 @@ async function route(){
       if(saved){
         try{
           const parsed = JSON.parse(saved);
-          // Sessions expire after 30 days
           const age = Date.now() - (parsed.savedAt||0);
           if(age < 30*24*60*60*1000 && parsed.session && parsed.biz){
             State.session = parsed.session;
@@ -117,7 +112,7 @@ async function route(){
     }
   }
 
-  // Check for remembered business location
+  // Remembered business location
   const saved = getSavedBiz();
   if(saved){
     try {
@@ -126,9 +121,11 @@ async function route(){
       return renderRoleSelect();
     } catch { clearSavedBiz(); }
   }
+
   return renderHome();
 }
-function navigate(path){history.pushState({},''  ,path);route();}
+
+function navigate(path){history.pushState({},'' ,path);route();}
 window.addEventListener('popstate',route);
 window.addEventListener('DOMContentLoaded',route);
 
@@ -149,8 +146,7 @@ function renderHome(){
         <input class="inp" id="code-inp" placeholder="0000" type="text" inputmode="numeric"
           maxlength="4" pattern="[0-9]*"
           style="text-align:center;font-size:40px;font-weight:700;letter-spacing:.3em;
-                 padding:20px;border-radius:var(--r-lg);background:var(--bg2);
-                 font-variant-numeric:tabular-nums"
+          padding:20px;border-radius:var(--r-lg);background:var(--bg2);font-variant-numeric:tabular-nums"
           onkeydown="if(event.key==='Enter')window._go()"/>
         <button class="btn btn-primary btn-full" onclick="window._go()"
           style="font-size:17px;padding:17px;border-radius:var(--r-lg)">
@@ -167,23 +163,16 @@ function renderHome(){
       </div>
     </div>`;
 
-  window._saveLocationHome=function(){
-    const code=($('code-inp')?.value||'').trim();
-    if(!code){showToast('Enter your store code first');return;}
-    // Fetch biz then save
-    API.business.getByCode(code).then(d=>{
-      saveLocation(d.business);
-      showToast('📍 Location saved');
-    }).catch(()=>showToast('Invalid code'));
-  };
   window._go=async function(){
     const code=($('code-inp')?.value||'').trim();
     if(code.length!==4){showToast('Enter a 4-digit code');return;}
-    showLoading('Looking up…');
+    showLoading();
     try{const d=await API.business.getByCode(code);State.biz=d.business;renderRoleSelect();}
     catch{showToast('Invalid store code');renderHome();}
   };
+
   window._ownerEntry=function(){State.biz=null;renderOwnerLogin();};
+
   window._sa=function(){
     let saPin='';
     showModal(`<div class="modal-head"><div class="modal-title">Super Admin</div><button class="modal-close" onclick="closeModal()">×</button></div>
@@ -191,8 +180,10 @@ function renderHome(){
         <div class="pin-display" id="sa-dots" style="justify-content:center;margin-bottom:20px">
           ${[0,1,2,3,4,5].map(i=>`<div class="pin-dot" id="sapd${i}"></div>`).join('')}
         </div>
-        <div class="pin-grid">${['1','2','3','4','5','6','7','8','9','del','0','go'].map(k=>`<button class="pin-key${k==='del'||k==='go'?' del':''}" onclick="window._saPin('${k}')" style="${k==='go'?'background:var(--brand);color:#000;font-weight:700':''}">
-          ${k==='del'?'⌫':k==='go'?'↵':k}</button>`).join('')}</div>
+        <div class="pin-grid">${['1','2','3','4','5','6','7','8','9','del','0','go'].map(k=>`
+          <button class="pin-key${k==='del'||k==='go'?' del':''}" onclick="window._saPin('${k}')"
+            style="${k==='go'?'background:var(--brand);color:#000;font-weight:700':''}">
+            ${k==='del'?'⌫':k==='go'?'↵':k}</button>`).join('')}</div>
       </div>`);
 
     function updateSaDots(){
@@ -232,10 +223,10 @@ function renderRoleSelect(){
       <div style="width:100%;max-width:340px">
         <div class="ios-group">
           ${[
-            ['staff',  'My Stats',    'Performance & coaching',  '#00e5a0'],
-            ['manager','Team',        'Dashboard & analytics',   '#3b9eff'],
-            ['bizAdmin','Admin',      'Settings & full control', '#9b59ff'],
-            ['owner',  'Owner',       'Billing & locations',     '#ff6b35']
+            ['staff',    'My Stats', 'Performance & coaching', '#00e5a0'],
+            ['manager',  'Team',     'Dashboard & analytics',  '#3b9eff'],
+            ['bizAdmin', 'Admin',    'Settings & full control','#9b59ff'],
+            ['owner',    'Owner',    'Billing & locations',    '#ff6b35'],
           ].map(([r,lbl,sub,color])=>`
             <div class="ios-row" onclick="window._role('${r}')">
               <div style="width:34px;height:34px;border-radius:10px;background:${color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -252,11 +243,12 @@ function renderRoleSelect(){
         </div>
         <button onclick="renderHome()"
           style="background:none;border:none;color:var(--brand);font-size:17px;cursor:pointer;
-                 font-family:inherit;display:block;width:100%;text-align:center;padding:10px">
+          font-family:inherit;display:block;width:100%;text-align:center;padding:10px">
           Cancel
         </button>
       </div>
     </div>`;
+
   window._role=function(r){r==='owner'?renderOwnerLogin():renderPinLogin(r);};
   window._changeLocation=function(){clearSavedBiz();State.biz=null;renderHome();};
 }
@@ -264,8 +256,8 @@ function renderRoleSelect(){
 // ── PIN Login ─────────────────────────────────────────────────────────────────
 function renderPinLogin(role){
   const titles={staff:'Staff Passcode',manager:'Manager PIN',bizAdmin:'Admin PIN'};
-  const subs={staff:'Enter your personal passcode',manager:'Enter the manager PIN',bizAdmin:'Enter the admin PIN'};
   let pin='';
+
   app().innerHTML=`
     <div class="page-center fade-up">
       <div style="margin-bottom:40px;text-align:center">
@@ -275,9 +267,7 @@ function renderPinLogin(role){
         <div style="font-size:26px;font-weight:700;letter-spacing:-.03em">${titles[role]}</div>
       </div>
       <div class="pin-display">
-        <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
-        <div class="pin-dot" id="pd2"></div><div class="pin-dot" id="pd3"></div>
-        <div class="pin-dot" id="pd4"></div><div class="pin-dot" id="pd5"></div>
+        ${[0,1,2,3,4,5].map(i=>`<div class="pin-dot" id="pd${i}"></div>`).join('')}
       </div>
       <div style="height:24px"></div>
       <div class="pin-grid">
@@ -290,8 +280,8 @@ function renderPinLogin(role){
       <div style="margin-top:24px;display:flex;align-items:center;gap:10px;justify-content:center">
         <div id="rm-toggle" onclick="window._toggleRM()"
           style="width:44px;height:26px;border-radius:13px;
-            background:${localStorage.getItem('tp_remember_'+role)?'var(--brand)':'var(--fill-med)'};
-            position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
+          background:${localStorage.getItem('tp_remember_'+role)?'var(--brand)':'var(--fill-med)'};
+          position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
           <div style="position:absolute;top:3px;
             left:${localStorage.getItem('tp_remember_'+role)?'21px':'3px'};
             width:20px;height:20px;border-radius:50%;background:#fff;
@@ -301,16 +291,17 @@ function renderPinLogin(role){
       </div>
       <button onclick="renderRoleSelect()"
         style="margin-top:16px;background:none;border:none;color:var(--brand);
-               font-size:17px;cursor:pointer;font-family:inherit;font-weight:500">
+        font-size:17px;cursor:pointer;font-family:inherit;font-weight:500">
         Cancel
       </button>
     </div>`;
+
   let _rememberMe = !!localStorage.getItem('tp_remember_'+role);
 
   window._toggleRM = function() {
     _rememberMe = !_rememberMe;
     const tog = document.getElementById('rm-toggle');
-    if (tog) {
+    if(tog){
       tog.style.background = _rememberMe ? 'var(--brand)' : 'var(--fill-med)';
       tog.children[0].style.left = _rememberMe ? '21px' : '3px';
     }
@@ -327,24 +318,20 @@ function renderPinLogin(role){
         else if(role==='manager')d=await API.auth.loginManager(State.biz.id,pin);
         else d=await API.auth.loginBizAdmin(State.biz.id,pin);
         State.session=d;
-
-        // Save to localStorage if remember me is on
         if(_rememberMe){
-          localStorage.setItem('tp_remember_'+role, '1');
-          localStorage.setItem('tp_session_'+role, JSON.stringify({
-            session: d,
-            bizId: State.biz?.id,
-            biz: State.biz,
-            savedAt: Date.now()
-          }));
+          localStorage.setItem('tp_remember_'+role,'1');
+          localStorage.setItem('tp_session_'+role,JSON.stringify({session:d,bizId:State.biz?.id,biz:State.biz,savedAt:Date.now()}));
         } else {
           localStorage.removeItem('tp_remember_'+role);
           localStorage.removeItem('tp_session_'+role);
         }
-
         await loadDashboardData();
         renderDashboard();
-      }catch{showToast('Invalid PIN — try again');renderPinLogin(role);}
+      }catch(e){
+        const msg = e.message?.includes('500') || e.message?.includes('service') ? 'Server error — try again' : 'Invalid PIN — try again';
+        showToast(msg);
+        renderPinLogin(role);
+      }
       return;
     }
     else if(pin.length<6){pin+=v;}
@@ -364,8 +351,7 @@ function renderOwnerLogin(){
       <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;position:relative">
         <div>
           <div class="field-lbl">Email</div>
-          <input class="inp" id="oe" type="email" placeholder="you@business.com"
-            style="border-radius:var(--r-md)"/>
+          <input class="inp" id="oe" type="email" placeholder="you@business.com" style="border-radius:var(--r-md)"/>
         </div>
         <div>
           <div class="field-lbl">Password</div>
@@ -377,8 +363,8 @@ function renderOwnerLogin(){
         <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
           <div id="owner-rm-tog" onclick="window._ownerTogRM()"
             style="width:44px;height:26px;border-radius:13px;
-              background:${localStorage.getItem('tp_owner_remember')?'var(--brand)':'var(--fill-med)'};
-              position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
+            background:${localStorage.getItem('tp_owner_remember')?'var(--brand)':'var(--fill-med)'};
+            position:relative;cursor:pointer;transition:background .25s;flex-shrink:0">
             <div style="position:absolute;top:3px;
               left:${localStorage.getItem('tp_owner_remember')?'21px':'3px'};
               width:20px;height:20px;border-radius:50%;background:#fff;
@@ -396,12 +382,14 @@ function renderOwnerLogin(){
         </button>
         <button onclick="renderHome()"
           style="background:none;border:none;color:var(--brand);font-size:17px;
-                 cursor:pointer;font-family:inherit;text-align:center;padding:10px;font-weight:500">
+          cursor:pointer;font-family:inherit;text-align:center;padding:10px;font-weight:500">
           Cancel
         </button>
       </div>
     </div>`;
+
   let _ownerRemember = !!localStorage.getItem('tp_owner_remember');
+
   window._ownerTogRM = function() {
     _ownerRemember = !_ownerRemember;
     const tog = document.getElementById('owner-rm-tog');
@@ -410,57 +398,90 @@ function renderOwnerLogin(){
       tog.children[0].style.left = _ownerRemember ? '21px' : '3px';
     }
   };
+
+  // Helper — save owner session to localStorage
+  function saveOwnerSession(session) {
+    if(_ownerRemember){
+      localStorage.setItem('tp_owner_remember','1');
+      localStorage.setItem('tp_owner_session', JSON.stringify({ session, savedAt: Date.now() }));
+    } else {
+      localStorage.removeItem('tp_owner_remember');
+      localStorage.removeItem('tp_owner_session');
+    }
+  }
+
   window._signin=async function(){
     if(!fbAuth){fbAuth=window._fbAuth||null;}
-    const email=$('oe')?.value?.trim(),pass=$('op')?.value;
+    const email=$('oe')?.value?.trim(), pass=$('op')?.value;
     if(!email||!pass){showToast('Enter email and password');return;}
     if(!fbAuth){showToast('Firebase not configured');return;}
     showLoading('Signing in…');
+
     try{
-      const c=await fbAuth.signInWithEmailAndPassword(email,pass);
-      const t=await c.user.getIdToken();
-      const d=await API.auth.loginOwner(t);
-      State.session=d;
-      // Check first business for subscription status
-      // businesses is array of {id, name, slug} objects from login
-      const firstBiz=d.businesses?.[0];
-      const firstBizId=firstBiz?.id || (typeof firstBiz==='string'?firstBiz:null);
-      if(firstBizId){
-        try{
-          const bd=await API.business.getById(firstBizId);
-          State.biz=bd.business;
-          // Only redirect to subscribe if explicitly inactive
-          if(bd.business.subscriptionStatus==='inactive'){
-            renderSubscribeFlow(bd.business);return;
-          }
-        }catch(bizErr){
-          console.warn('Business lookup failed:',bizErr.message);
+      const c = await fbAuth.signInWithEmailAndPassword(email, pass);
+      const t = await c.user.getIdToken();
+      const d = await API.auth.loginOwner(t);
+
+      // Store Firebase UID on session so Add Location works for existing owners
+      d.uid = c.user.uid;
+      State.session = d;
+
+      // Save session now — before any redirects — so it persists regardless of path
+      saveOwnerSession(d);
+
+      // Check businesses
+      const businesses = d.businesses || [];
+      const firstBiz = businesses[0];
+      const firstBizId = firstBiz?.id || (typeof firstBiz === 'string' ? firstBiz : null);
+
+      // No businesses at all — brand new owner, go to owner dashboard
+      // They'll create a location from there which triggers the subscribe flow
+      if(!firstBizId){
+        renderOwnerDashboard();
+        return;
+      }
+
+      // Has a business — check subscription status
+      try{
+        const bd = await API.business.getById(firstBizId);
+        State.biz = bd.business;
+
+        // No active subscription → show subscribe flow
+        const status = bd.business.subscriptionStatus;
+        if(!status || status === 'inactive'){
+          renderSubscribeFlow(bd.business);
+          return;
         }
+      } catch(bizErr){
+        console.warn('Business lookup failed:', bizErr.message);
       }
-      // Save owner session if remember me
-      if(_ownerRemember){
-        localStorage.setItem('tp_owner_remember','1');
-        localStorage.setItem('tp_owner_session', JSON.stringify({
-          session: State.session,
-          savedAt: Date.now()
-        }));
-      } else {
-        localStorage.removeItem('tp_owner_remember');
-        localStorage.removeItem('tp_owner_session');
-      }
+
       renderOwnerDashboard();
-    }catch(e){app().innerHTML='';renderOwnerLogin();showToast(e.message||'Sign in failed');}
+
+    }catch(e){
+      app().innerHTML='';
+      renderOwnerLogin();
+      showToast(e.message||'Sign in failed');
+    }
   };
+
   window._register=async function(){
     if(!fbAuth){fbAuth=window._fbAuth||null;}
-    const email=$('oe')?.value?.trim(),pass=$('op')?.value;
+    const email=$('oe')?.value?.trim(), pass=$('op')?.value;
     if(!email||!pass){showToast('Enter email and password');return;}
     if(pass.length<6){showToast('Password must be 6+ characters');return;}
     if(!fbAuth){showToast('Firebase not configured');return;}
     showLoading('Creating account…');
-    try{const c=await fbAuth.createUserWithEmailAndPassword(email,pass);const t=await c.user.getIdToken();State._ownerToken=t;renderCreateBusiness(t);}
-    catch(e){
-      app().innerHTML='';renderOwnerLogin();
+    try{
+      const c = await fbAuth.createUserWithEmailAndPassword(email, pass);
+      const t = await c.user.getIdToken();
+      // Store uid so business creation works
+      State._ownerFirebaseUid = c.user.uid;
+      State._ownerToken = t;
+      renderCreateBusiness(t);
+    }catch(e){
+      app().innerHTML='';
+      renderOwnerLogin();
       if(e.code==='auth/email-already-in-use'){showToast('Email already registered — try Sign In',4000);}
       else{showToast(e.message||'Registration failed');}
     }
@@ -469,22 +490,19 @@ function renderOwnerLogin(){
 
 // ── Create Business ───────────────────────────────────────────────────────────
 function renderCreateBusiness(idToken){
-  // idToken can be a Firebase ID token (new owner) or reused from existing session
-  const existingSession=State.session;
-  const isExistingOwner=existingSession?.role==='owner';
-  const backFn=isExistingOwner?'renderOwnerDashboard()':'renderOwnerLogin()';
+  const existingSession = State.session;
+  const isExistingOwner = existingSession?.role === 'owner';
+  const backFn = isExistingOwner ? 'renderOwnerDashboard()' : 'renderOwnerLogin()';
 
   app().innerHTML=`
     <div class="page-center fade-up" style="justify-content:flex-start;padding-top:72px;min-height:100vh">
       <div style="width:100%;max-width:340px">
         <button onclick="${backFn}"
           style="background:none;border:none;color:var(--brand);font-size:17px;cursor:pointer;
-                 font-family:inherit;margin-bottom:28px;padding:0;display:block">← Back</button>
+          font-family:inherit;margin-bottom:28px;padding:0;display:block">← Back</button>
         <div style="font-size:28px;font-weight:700;letter-spacing:-.04em;margin-bottom:6px">New Location</div>
-        <div style="font-size:15px;color:var(--lbl3);margin-bottom:32px">
-          Set up a new Tap+ location.<br/>
-          <span style="color:var(--brand);font-weight:500">A setup fee and subscription apply.</span>
-        </div>
+        <div style="font-size:15px;color:var(--lbl3);margin-bottom:8px">Set up a new Tap+ location.</div>
+        <div style="font-size:14px;color:var(--brand);font-weight:500;margin-bottom:32px">A setup fee and subscription apply.</div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <div>
             <div class="field-lbl">Location Name</div>
@@ -508,33 +526,44 @@ function renderCreateBusiness(idToken){
     </div>`;
 
   window._create=async function(){
-    const name=$('cb-n')?.value?.trim();
-    const adminPin=$('cb-a')?.value?.trim();
-    const mgrPin=$('cb-m')?.value?.trim();
+    const name = $('cb-n')?.value?.trim();
+    const adminPin = $('cb-a')?.value?.trim();
+    const mgrPin = $('cb-m')?.value?.trim();
+
     if(!name){showToast('Enter location name');return;}
     if(!adminPin||adminPin.length<4){showToast('Admin PIN must be at least 4 digits');return;}
     if(!mgrPin||mgrPin.length<4){showToast('Manager PIN must be at least 4 digits');return;}
     if(adminPin===mgrPin){showToast('PINs must be different');return;}
+
     showLoading('Creating location…');
     try{
-      // Preserve existing owner session while creating
+      // Set auth token in session storage for the API call
       if(isExistingOwner){
-        sessionStorage.setItem('tp_session',JSON.stringify(existingSession));
+        sessionStorage.setItem('tp_session', JSON.stringify(existingSession));
       } else {
-        sessionStorage.setItem('tp_session',JSON.stringify({token:idToken}));
+        sessionStorage.setItem('tp_session', JSON.stringify({token: idToken}));
       }
-      const d=await API.business.create({name,adminPin,managerPin:mgrPin});
-      State.biz=d.business;
-      showToast('Location created! Code: '+d.business.storeCode,3000);
-      // Always go to subscription flow — new location = new subscription
-      renderSubscribeFlow(d.business);
-    }catch(e){showToast(e.message||'Failed');renderCreateBusiness(idToken);}
+
+      const d = await API.business.create({name, adminPin, managerPin: mgrPin});
+      State.biz = d.business;
+      showToast('Location created! Code: ' + d.business.storeCode, 3000);
+
+      if(typeof renderSubscribeFlow === 'function'){
+        renderSubscribeFlow(d.business);
+      } else {
+        showToast('Location created! Code: ' + d.business.storeCode, 4000);
+        renderOwnerDashboard();
+      }
+    }catch(e){
+      showToast(e.message||'Failed');
+      renderCreateBusiness(idToken);
+    }
   };
 }
 
 // ── Dashboard Entry ───────────────────────────────────────────────────────────
 async function renderDashboardEntry(slug){
-  const sess=API.auth.getSession();
+  const sess = API.auth.getSession();
   if(sess?.token&&sess?.bizId){
     State.session=sess;showLoading();
     try{const d=await API.business.getById(sess.bizId);State.biz=d.business;await loadDashboardData();renderDashboard();return;}
@@ -553,5 +582,3 @@ async function loadDashboardData(){
   if(t.status==='fulfilled')State.taps=t.value.taps||[];
   if(l.status==='fulfilled')State.layout=l.value.layouts;
 }
-
-// ── Dashboard Shell ───────────────────────────────────────────────────────────
