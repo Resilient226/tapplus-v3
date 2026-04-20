@@ -428,3 +428,4 @@ function handleSuccessRoute() {
   } else {
     renderHome();
   }
+}
