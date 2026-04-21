@@ -32,7 +32,6 @@ async function renderOwnerDashboard() {
 
   showLoading('Loading…');
 
-  // Load all business data — filter out any bad entries first
   let bizList = [];
   try {
     const validIds = bizIds.map(b => b?.id || b).filter(id => id && typeof id === 'string' && id !== 'undefined');
@@ -42,7 +41,6 @@ async function renderOwnerDashboard() {
       .map(r => r.value.business);
   } catch(e) {}
 
-  // Load taps — only for businesses with valid IDs
   let allTaps = [];
   try {
     const validBizList = bizList.filter(b => b && b.id);
@@ -67,7 +65,6 @@ async function renderOwnerDashboard() {
 
   window._ownerBizList = bizList;
 
-  // ── Add Location form ────────────────────────────────────────────────────
   window._ownerAddLocation = function() {
     app().innerHTML = `
       <div style="max-width:400px;margin:0 auto;padding:72px 20px 40px">
@@ -193,7 +190,6 @@ async function renderOwnerDashboard() {
     window._ownerTab('locations');
   }
 
-  // ── Locations tab ──────────────────────────────────────────────────────────
   window._ownerLocations = function(body) {
     if (bizList.length === 0) {
       body.innerHTML = `
@@ -206,7 +202,6 @@ async function renderOwnerDashboard() {
       return;
     }
 
-    // Group locations by groupName (falls back to first word of name)
     const groups = {};
     bizList.forEach(b => {
       const key = b.groupName || b.name.split(' ')[0];
@@ -215,7 +210,6 @@ async function renderOwnerDashboard() {
     });
 
     const groupKeys = Object.keys(groups);
-    const isMultiGroup = groupKeys.length > 1 || (groupKeys.length === 1 && groups[groupKeys[0]].length > 1);
 
     body.innerHTML = `
       <div class="sec-lbl">Your Locations</div>
@@ -275,10 +269,8 @@ async function renderOwnerDashboard() {
             </div>`;
         }).join('');
 
-        // If single location no grouping wrapper needed
         if (!isGroup) return locCards;
 
-        // Multi-location: wrap in a collapsible group header
         const allActive = locs.every(b => b.subscriptionStatus === 'active');
         const anyActive = locs.some(b => b.subscriptionStatus === 'active');
         const statusColor = allActive ? 'var(--brand)' : anyActive ? 'var(--ios-yellow)' : 'var(--ios-red)';
@@ -306,7 +298,6 @@ async function renderOwnerDashboard() {
       </button>`;
   };
 
-  // ── Analytics tab ──────────────────────────────────────────────────────────
   window._ownerAnalytics = function(body) {
     const statTiles = [
       [totalTaps, 'Total Taps', 'var(--brand)', 'rgba(0,229,160,.12)'],
@@ -349,7 +340,6 @@ async function renderOwnerDashboard() {
         </div>` : ''}`;
   };
 
-  // ── Billing tab ────────────────────────────────────────────────────────────
   window._ownerBilling = function(body) {
     const firstBiz = bizList[0];
     const plan = firstBiz?.plan || null;
@@ -397,15 +387,12 @@ async function renderOwnerDashboard() {
             ${isActive ? 'Active' : 'Inactive'}
           </div>
         </div>
-
         ${!isActive ? `
           <div style="font-size:22px;font-weight:700;margin-bottom:8px">
             ${plan ? planNames[plan] : 'No Active Plan'}
           </div>
           <div style="font-size:14px;color:var(--lbl3);line-height:1.6;margin-bottom:20px">
-            ${plan
-              ? 'Your subscription is inactive. Subscribe to reactivate.'
-              : 'Subscribe to start collecting reviews, tracking staff, and growing your ratings.'}
+            ${plan ? 'Your subscription is inactive. Subscribe to reactivate.' : 'Subscribe to start collecting reviews, tracking staff, and growing your ratings.'}
           </div>
           <button onclick="window._ownerChoosePlan()"
             style="width:100%;background:var(--brand);border:none;border-radius:var(--r-lg);
@@ -519,7 +506,6 @@ async function renderOwnerDashboard() {
     window._ownerInvoice = function() { showToast('Invoice download coming soon'); };
   };
 
-  // ── Shared owner actions ───────────────────────────────────────────────────
   window._ownerOpenBiz = async function(id) {
     showLoading();
     try {
@@ -652,7 +638,6 @@ async function saBiz() {
   const body = $('sa-body');
   if (!body) return;
 
-  // Guard: check token before fetching
   const saToken = API.auth.getToken();
   if (!saToken) {
     body.innerHTML = `
@@ -682,11 +667,6 @@ async function saBiz() {
         <div style="background:rgba(255,77,106,.1);border-radius:var(--r-lg);padding:20px;color:var(--ios-red);font-size:14px;line-height:1.6">
           <div style="font-weight:700;margin-bottom:6px">Failed to load businesses</div>
           <div style="font-family:monospace;font-size:12px;color:var(--lbl3)">${esc(saD.error || 'Server error')} (${saR.status})</div>
-          <div style="margin-top:8px;font-size:13px;color:var(--lbl3)">
-            ${saR.status === 401 || saR.status === 403
-              ? 'Your SA session may have expired. Sign out and back in.'
-              : 'Check Vercel function logs for details.'}
-          </div>
           <button onclick="API.auth.logout();renderHome()"
             style="margin-top:16px;background:var(--fill);border:none;border-radius:var(--r-sm);
             padding:10px 20px;color:var(--lbl2);font-size:13px;cursor:pointer;font-family:inherit;width:100%">
@@ -705,8 +685,6 @@ async function saBiz() {
       </div>`;
     return;
   }
-
-  let openBizId = null;
 
   function draw(businesses) {
     body.innerHTML = `
@@ -728,8 +706,23 @@ async function saBiz() {
     const groups = {};
     businesses.forEach(b => {
       const key = b.ownerId || '__none__';
-      if (!groups[key]) groups[key] = { ownerId: key, ownerEmail: b.ownerEmail || b.ownerId || 'Unknown Owner', locs: [] };
+      if (!groups[key]) {
+        // FIX: Use business name as group label, not raw Firebase UID
+        const label = b.name || 'Unknown Account';
+        groups[key] = { ownerId: key, label, locs: [] };
+      }
       groups[key].locs.push(b);
+    });
+
+    // For multi-location accounts, use the shared name prefix or first biz name
+    Object.values(groups).forEach(g => {
+      if (g.locs.length > 1) {
+        // Try to find a common prefix, else use first biz name
+        const firstName = g.locs[0].name || '';
+        const firstWord = firstName.split(' ')[0];
+        const allShare = g.locs.every(b => b.name?.startsWith(firstWord));
+        g.label = allShare && firstWord ? firstWord : firstName;
+      }
     });
 
     el.innerHTML = Object.values(groups).map(g => {
@@ -770,12 +763,11 @@ async function saBiz() {
 
       return `
         <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-lg);margin-bottom:10px;overflow:hidden">
-          <!-- Owner group header -->
           <div style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer"
             onclick="const b=$('${groupId}');if(b)b.style.display=b.style.display==='none'?'block':'none'">
             <div style="flex:1;min-width:0">
               <div style="font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                ${esc(g.ownerEmail)}
+                ${esc(g.label)}
               </div>
               <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
                 ${g.locs.length} location${g.locs.length !== 1 ? 's' : ''}
@@ -785,7 +777,6 @@ async function saBiz() {
             </div>
             <div style="color:var(--lbl3);font-size:12px">▾</div>
           </div>
-          <!-- Location rows (expanded by default) -->
           <div id="${groupId}">
             ${locationRows}
           </div>
@@ -872,29 +863,179 @@ async function saBiz() {
     };
   };
 
+  // ── Settings modal with tabs: PINs | Links | Subscription ─────────────────
   window._saBizSettings = function(bizId, bizName, ownerId) {
-    showModal(`
-      <div class="modal-head">
-        <div class="modal-title">Settings</div>
-        <button class="modal-close" onclick="closeModal()">×</button>
-      </div>
-      <div style="padding:0 20px 16px">
-        <div style="font-size:14px;color:var(--lbl3);margin-bottom:16px">${esc(bizName)}</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div>
-            <div class="field-lbl">New Admin PIN (blank to keep)</div>
-            <input class="inp" id="bs-admin" type="text" inputmode="numeric" placeholder="4-6 digits"/>
-          </div>
-          <div>
-            <div class="field-lbl">New Manager PIN (blank to keep)</div>
-            <input class="inp" id="bs-mgr" type="text" inputmode="numeric" placeholder="4-6 digits"/>
-          </div>
-          <button class="btn btn-primary btn-full" onclick="window._saSaveSettings('${bizId}')">Save</button>
-          <button class="btn btn-danger btn-full" onclick="window._saDeleteBiz('${bizId}','${esc(bizName)}','${esc(ownerId)}')">Delete Business</button>
-        </div>
-      </div>`);
+    let settingsTab = 'pins';
+    let bizData = null;
 
-    window._saSaveSettings = async function(bId) {
+    // Load full biz data for links
+    API.business.getById(bizId).then(d => {
+      bizData = d.business;
+      refreshSettingsModal();
+    }).catch(() => {
+      bizData = { id: bizId, name: bizName, reviewLinks: [], platformLinks: [] };
+      refreshSettingsModal();
+    });
+
+    function refreshSettingsModal() {
+      const tabBar = `
+        <div style="display:flex;gap:4px;margin-bottom:16px;background:var(--fill);border-radius:var(--r-sm);padding:3px">
+          ${['pins','links','subscription'].map(t => `
+            <button onclick="window._saSetTab('${t}')"
+              id="bst-${t}"
+              style="flex:1;padding:7px 4px;border:none;border-radius:calc(var(--r-sm) - 2px);
+              font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;
+              background:${t === settingsTab ? 'var(--bg2)' : 'transparent'};
+              color:${t === settingsTab ? 'var(--lbl1)' : 'var(--lbl3)'}">
+              ${t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>`).join('')}
+        </div>`;
+
+      let tabContent = '';
+
+      if (settingsTab === 'pins') {
+        tabContent = `
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="field-lbl">New Admin PIN (blank to keep)</div>
+              <input class="inp" id="bs-admin" type="text" inputmode="numeric" placeholder="4-6 digits"/>
+            </div>
+            <div>
+              <div class="field-lbl">New Manager PIN (blank to keep)</div>
+              <input class="inp" id="bs-mgr" type="text" inputmode="numeric" placeholder="4-6 digits"/>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="window._saSavePins('${bizId}')">Save PINs</button>
+          </div>`;
+      }
+
+      if (settingsTab === 'links') {
+        const reviewLinks = bizData?.reviewLinks || [];
+        const platformLinks = bizData?.platformLinks || [];
+        tabContent = `
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Review Links</div>
+            <div id="bs-review-links">
+              ${reviewLinks.length === 0
+                ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No review links set.</div>`
+                : reviewLinks.map((l, i) => `
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:13px;font-weight:500">${esc(l.label || l.platform || 'Link')}</div>
+                        <div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url || '')}</div>
+                      </div>
+                      <button onclick="window._saRemoveLink('review',${i})"
+                        style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-xs);
+                        padding:4px 8px;color:var(--ios-red);font-size:11px;cursor:pointer;flex-shrink:0">✕</button>
+                    </div>`).join('')}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <input class="inp" id="bs-rl-label" placeholder="Label (e.g. Google)" style="flex:1;font-size:13px;padding:8px 10px"/>
+              <input class="inp" id="bs-rl-url" placeholder="https://…" style="flex:2;font-size:13px;padding:8px 10px"/>
+              <button onclick="window._saAddLink('review')"
+                style="background:var(--brand);border:none;border-radius:var(--r-sm);
+                padding:8px 12px;color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
+            </div>
+
+            <div style="font-size:11px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">Platform Links</div>
+            <div id="bs-platform-links">
+              ${platformLinks.length === 0
+                ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No platform links set.</div>`
+                : platformLinks.map((l, i) => `
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:13px;font-weight:500">${esc(l.label || l.platform || 'Link')}</div>
+                        <div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url || '')}</div>
+                      </div>
+                      <button onclick="window._saRemoveLink('platform',${i})"
+                        style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-xs);
+                        padding:4px 8px;color:var(--ios-red);font-size:11px;cursor:pointer;flex-shrink:0">✕</button>
+                    </div>`).join('')}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <input class="inp" id="bs-pl-label" placeholder="Label" style="flex:1;font-size:13px;padding:8px 10px"/>
+              <input class="inp" id="bs-pl-url" placeholder="https://…" style="flex:2;font-size:13px;padding:8px 10px"/>
+              <button onclick="window._saAddLink('platform')"
+                style="background:var(--brand);border:none;border-radius:var(--r-sm);
+                padding:8px 12px;color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="window._saSaveLinks('${bizId}')" style="margin-top:14px">Save Links</button>
+          </div>`;
+      }
+
+      if (settingsTab === 'subscription') {
+        const currentStatus = bizData?.subscriptionStatus || 'inactive';
+        tabContent = `
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="field-lbl">Subscription Status</div>
+              <select class="inp" id="bs-sub-status" style="appearance:auto">
+                ${['active','inactive','canceled','past_due','trialing'].map(s =>
+                  `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div>
+              <div class="field-lbl">Plan</div>
+              <select class="inp" id="bs-plan" style="appearance:auto">
+                ${['','pilot','monthly','annual'].map(p =>
+                  `<option value="${p}" ${p === (bizData?.plan || '') ? 'selected' : ''}>${p || '(none)'}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="window._saSaveSubscription('${bizId}')">Save Subscription</button>
+            <button class="btn btn-danger btn-full" onclick="window._saDeleteBiz('${bizId}','${esc(bizName)}','${esc(ownerId)}')">Delete Business</button>
+          </div>`;
+      }
+
+      const modalContent = `
+        <div class="modal-head">
+          <div class="modal-title">${esc(bizName)}</div>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div style="padding:0 20px 16px">
+          ${tabBar}
+          ${tabContent}
+        </div>`;
+
+      // Either open fresh or update existing modal
+      const existing = document.querySelector('.modal-inner');
+      if (existing) {
+        existing.innerHTML = modalContent;
+      } else {
+        showModal(modalContent);
+      }
+    }
+
+    window._saSetTab = function(t) {
+      settingsTab = t;
+      refreshSettingsModal();
+    };
+
+    window._saAddLink = function(type) {
+      const labelEl = $(type === 'review' ? 'bs-rl-label' : 'bs-pl-label');
+      const urlEl = $(type === 'review' ? 'bs-rl-url' : 'bs-pl-url');
+      const label = labelEl?.value?.trim();
+      const url = urlEl?.value?.trim();
+      if (!label || !url) { showToast('Enter both label and URL'); return; }
+      if (!/^https?:\/\//i.test(url)) { showToast('URL must start with https://'); return; }
+      if (type === 'review') {
+        bizData.reviewLinks = [...(bizData.reviewLinks || []), { label, url, platform: label.toLowerCase(), active: true }];
+      } else {
+        bizData.platformLinks = [...(bizData.platformLinks || []), { label, url, platform: label.toLowerCase(), active: true }];
+      }
+      refreshSettingsModal();
+    };
+
+    window._saRemoveLink = function(type, idx) {
+      if (type === 'review') {
+        bizData.reviewLinks = (bizData.reviewLinks || []).filter((_, i) => i !== idx);
+      } else {
+        bizData.platformLinks = (bizData.platformLinks || []).filter((_, i) => i !== idx);
+      }
+      refreshSettingsModal();
+    };
+
+    window._saSavePins = async function(bId) {
       const adminPin = $('bs-admin')?.value?.trim();
       const mgrPin = $('bs-mgr')?.value?.trim();
       if (!adminPin && !mgrPin) { showToast('Enter at least one PIN'); return; }
@@ -904,8 +1045,35 @@ async function saBiz() {
       if (adminPin) updates.adminPin = adminPin;
       if (mgrPin) updates.managerPin = mgrPin;
       closeModal(); showLoading('Saving…');
-      try { await API.business.update(bId, updates); showToast('Saved ✓'); }
+      try { await API.business.update(bId, updates); showToast('PINs saved ✓'); }
       catch(e) { showToast(e.message || 'Failed'); }
+      renderSuperAdminDashboard();
+      setTimeout(() => window._saT('biz'), 400);
+    };
+
+    window._saSaveLinks = async function(bId) {
+      closeModal(); showLoading('Saving…');
+      try {
+        await API.business.update(bId, {
+          reviewLinks: bizData.reviewLinks || [],
+          platformLinks: bizData.platformLinks || []
+        });
+        showToast('Links saved ✓');
+      } catch(e) { showToast(e.message || 'Failed'); }
+      renderSuperAdminDashboard();
+      setTimeout(() => window._saT('biz'), 400);
+    };
+
+    window._saSaveSubscription = async function(bId) {
+      const status = $('bs-sub-status')?.value;
+      const plan = $('bs-plan')?.value;
+      closeModal(); showLoading('Saving…');
+      try {
+        const updates = { subscriptionStatus: status };
+        if (plan) updates.plan = plan;
+        await API.business.update(bId, updates);
+        showToast('Subscription updated ✓');
+      } catch(e) { showToast(e.message || 'Failed'); }
       renderSuperAdminDashboard();
       setTimeout(() => window._saT('biz'), 400);
     };
