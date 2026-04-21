@@ -206,56 +206,98 @@ async function renderOwnerDashboard() {
       return;
     }
 
+    // Group locations by groupName (falls back to first word of name)
+    const groups = {};
+    bizList.forEach(b => {
+      const key = b.groupName || b.name.split(' ')[0];
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(b);
+    });
+
+    const groupKeys = Object.keys(groups);
+    const isMultiGroup = groupKeys.length > 1 || (groupKeys.length === 1 && groups[groupKeys[0]].length > 1);
+
     body.innerHTML = `
       <div class="sec-lbl">Your Locations</div>
-      ${bizList.map(b => {
-        const bTaps = allTaps.filter(t => t.bizId === b.id);
-        const bAvg = bTaps.length ? (bTaps.reduce((s, t) => s + (t.rating || 0), 0) / bTaps.length).toFixed(1) : '—';
-        const bFive = bTaps.filter(t => t.rating === 5).length;
-        const isActive = b.subscriptionStatus === 'active';
-        return `
-          <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px;margin-bottom:10px">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-              <div style="width:44px;height:44px;border-radius:var(--r-md);background:var(--brand)14;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">
-                ${b.branding?.logoUrl ? `<img src="${esc(b.branding.logoUrl)}" style="width:100%;height:100%;border-radius:var(--r-md);object-fit:cover"/>` : '🏪'}
-              </div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>
-                <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
-                  Code: <span style="color:var(--brand);font-weight:600">${esc(b.storeCode || '—')}</span>
-                  <span style="margin-left:8px;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600;
-                    background:${isActive ? 'rgba(0,229,160,.15)' : 'rgba(255,77,106,.1)'};
-                    color:${isActive ? 'var(--brand)' : 'var(--ios-red)'}">
-                    ${isActive ? 'Active' : 'Inactive'}
-                  </span>
+      ${groupKeys.map(gKey => {
+        const locs = groups[gKey];
+        const isGroup = locs.length > 1;
+        const gId = 'owgrp-' + gKey.replace(/[^a-z0-9]/gi,'');
+
+        const locCards = locs.map(b => {
+          const bTaps = allTaps.filter(t => t.bizId === b.id);
+          const bAvg = bTaps.length ? (bTaps.reduce((s, t) => s + (t.rating || 0), 0) / bTaps.length).toFixed(1) : '—';
+          const bFive = bTaps.filter(t => t.rating === 5).length;
+          const isActive = b.subscriptionStatus === 'active';
+          return `
+            <div style="background:var(--bg2);border-radius:var(--r-lg);padding:16px;margin-bottom:10px">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                <div style="width:44px;height:44px;border-radius:var(--r-md);background:var(--brand)14;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">
+                  ${b.branding?.logoUrl ? `<img src="${esc(b.branding.logoUrl)}" style="width:100%;height:100%;border-radius:var(--r-md);object-fit:cover"/>` : '🏪'}
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>
+                  <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
+                    Code: <span style="color:var(--brand);font-weight:600">${esc(b.storeCode || '—')}</span>
+                    <span style="margin-left:8px;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600;
+                      background:${isActive ? 'rgba(0,229,160,.15)' : 'rgba(255,77,106,.1)'};
+                      color:${isActive ? 'var(--brand)' : 'var(--ios-red)'}">
+                      ${isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                 </div>
               </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+                ${[
+                  [bTaps.length, 'Taps', 'var(--brand)'],
+                  [bAvg + '★', 'Rating', 'var(--ios-yellow)'],
+                  [bFive, '5-Stars', 'var(--a-blue)']
+                ].map(([v, l, c]) => `
+                  <div style="background:var(--bg3);border-radius:10px;padding:10px 8px;text-align:center">
+                    <div style="font-size:18px;font-weight:700;color:${c};letter-spacing:-.02em">${v}</div>
+                    <div style="font-size:10px;color:var(--lbl3);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">${l}</div>
+                  </div>`).join('')}
+              </div>
+              <div style="display:flex;gap:8px">
+                <button onclick="${isActive ? `window._ownerOpenBiz('${b.id}')` : `window._ownerTab('billing')`}"
+                  style="flex:1;background:${isActive ? 'var(--brand)' : 'var(--fill)'};
+                  border:none;border-radius:var(--r-sm);padding:10px;
+                  color:${isActive ? '#000' : 'var(--lbl2)'};
+                  font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+                  ${isActive ? 'Manage' : 'Subscribe'}
+                </button>
+                <button onclick="window._ownerChangePins('${b.id}','${esc(b.name)}')"
+                  style="background:var(--fill);border:none;border-radius:var(--r-sm);padding:10px 16px;
+                  color:var(--lbl2);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
+                  PINs
+                </button>
+              </div>
+            </div>`;
+        }).join('');
+
+        // If single location no grouping wrapper needed
+        if (!isGroup) return locCards;
+
+        // Multi-location: wrap in a collapsible group header
+        const allActive = locs.every(b => b.subscriptionStatus === 'active');
+        const anyActive = locs.some(b => b.subscriptionStatus === 'active');
+        const statusColor = allActive ? 'var(--brand)' : anyActive ? 'var(--ios-yellow)' : 'var(--ios-red)';
+        const statusBg = allActive ? 'rgba(0,229,160,.12)' : anyActive ? 'rgba(255,214,10,.08)' : 'rgba(255,77,106,.08)';
+        const statusLabel = allActive ? 'All Active' : anyActive ? 'Partial' : 'Inactive';
+
+        return `
+          <div style="margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 4px;cursor:pointer"
+              onclick="const el=$('${gId}');if(el){const open=el.style.display!=='none';el.style.display=open?'none':'block';this.querySelector('.grp-arrow').textContent=open?'▸':'▾'}">
+              <div style="flex:1">
+                <span style="font-size:14px;font-weight:700;color:var(--lbl2)">${esc(gKey)}</span>
+                <span style="margin-left:8px;font-size:11px;color:var(--lbl3)">${locs.length} locations</span>
+                <span style="margin-left:6px;padding:1px 7px;border-radius:100px;font-size:9px;font-weight:700;
+                  background:${statusBg};color:${statusColor}">${statusLabel}</span>
+              </div>
+              <span class="grp-arrow" style="color:var(--lbl3);font-size:11px">▾</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
-              ${[
-                [bTaps.length, 'Taps', 'var(--brand)'],
-                [bAvg + '★', 'Rating', 'var(--ios-yellow)'],
-                [bFive, '5-Stars', 'var(--a-blue)']
-              ].map(([v, l, c]) => `
-                <div style="background:var(--bg3);border-radius:10px;padding:10px 8px;text-align:center">
-                  <div style="font-size:18px;font-weight:700;color:${c};letter-spacing:-.02em">${v}</div>
-                  <div style="font-size:10px;color:var(--lbl3);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">${l}</div>
-                </div>`).join('')}
-            </div>
-            <div style="display:flex;gap:8px">
-              <button onclick="${isActive ? `window._ownerOpenBiz('${b.id}')` : `window._ownerTab('billing')`}"
-                style="flex:1;background:${isActive ? 'var(--brand)' : 'var(--fill)'};
-                border:none;border-radius:var(--r-sm);padding:10px;
-                color:${isActive ? '#000' : 'var(--lbl2)'};
-                font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-                ${isActive ? 'Manage' : 'Subscribe'}
-              </button>
-              <button onclick="window._ownerChangePins('${b.id}','${esc(b.name)}')"
-                style="background:var(--fill);border:none;border-radius:var(--r-sm);padding:10px 16px;
-                color:var(--lbl2);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
-                PINs
-              </button>
-            </div>
+            <div id="${gId}">${locCards}</div>
           </div>`;
       }).join('')}
       <button class="btn btn-ghost btn-full" onclick="window._ownerAddLocation()"
@@ -682,37 +724,73 @@ async function saBiz() {
       return;
     }
 
-    el.innerHTML = businesses.map(b => `
-      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-lg);margin-bottom:10px;overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:14px">
+    // Group by ownerId
+    const groups = {};
+    businesses.forEach(b => {
+      const key = b.ownerId || '__none__';
+      if (!groups[key]) groups[key] = { ownerId: key, ownerEmail: b.ownerEmail || b.ownerId || 'Unknown Owner', locs: [] };
+      groups[key].locs.push(b);
+    });
+
+    el.innerHTML = Object.values(groups).map(g => {
+      const allActive = g.locs.every(b => b.subscriptionStatus === 'active');
+      const anyActive = g.locs.some(b => b.subscriptionStatus === 'active');
+      const statusColor = allActive ? 'var(--brand)' : anyActive ? 'var(--ios-yellow)' : 'var(--ios-red)';
+      const statusBg = allActive ? 'rgba(0,229,160,.12)' : anyActive ? 'rgba(255,214,10,.08)' : 'rgba(255,77,106,.08)';
+      const statusLabel = allActive ? 'All Active' : anyActive ? 'Partial' : 'Inactive';
+      const groupId = 'sagrp-' + (g.ownerId || 'none').replace(/[^a-z0-9]/gi,'');
+
+      const locationRows = g.locs.map(b => `
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;border-top:.5px solid rgba(255,255,255,.06)">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:15px">${esc(b.name)}</div>
-            <div style="font-size:12px;color:var(--lbl2);margin-top:2px">
-              Code: <span style="color:var(--brand);font-weight:700">${esc(b.storeCode || '—')}</span> · ${esc(b.slug || '')}
-              <span style="margin-left:6px;padding:1px 7px;border-radius:100px;font-size:9px;font-weight:700;
+            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>
+            <div style="font-size:11px;color:var(--lbl3);margin-top:1px">
+              Code: <span style="color:var(--brand);font-weight:700">${esc(b.storeCode || '—')}</span>
+              <span style="margin-left:6px;padding:1px 6px;border-radius:100px;font-size:9px;font-weight:700;
                 background:${b.subscriptionStatus === 'active' ? 'rgba(0,229,160,.15)' : 'rgba(255,77,106,.1)'};
                 color:${b.subscriptionStatus === 'active' ? 'var(--brand)' : 'var(--ios-red)'}">
                 ${b.subscriptionStatus === 'active' ? 'Active' : 'Inactive'}
               </span>
             </div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
+          <div style="display:flex;gap:5px;flex-shrink:0">
             <button onclick="window._saBizSettings('${b.id}','${esc(b.name)}','${esc(b.ownerId || '')}')"
-              style="padding:7px 12px;border-radius:var(--r-sm);border:none;background:var(--fill);
-              color:var(--lbl2);font-size:13px;cursor:pointer;font-family:inherit">
-              Settings
-            </button>
+              style="padding:6px 10px;border-radius:var(--r-sm);border:none;background:var(--fill);
+              color:var(--lbl2);font-size:12px;cursor:pointer;font-family:inherit">Settings</button>
             <button onclick="window._saViewBiz('${b.id}')"
-              style="padding:7px 12px;border-radius:var(--r-sm);border:none;
+              style="padding:6px 10px;border-radius:var(--r-sm);border:none;
               background:var(--brand);color:#000;font-size:12px;font-weight:700;
               cursor:pointer;font-family:inherit">View</button>
             <button onclick="window._saDeleteBiz('${b.id}','${esc(b.name)}','${esc(b.ownerId || '')}')"
-              style="padding:7px 10px;border-radius:var(--r-sm);border:none;
-              background:rgba(255,77,106,.1);color:var(--ios-red);font-size:13px;
+              style="padding:6px 8px;border-radius:var(--r-sm);border:none;
+              background:rgba(255,77,106,.1);color:var(--ios-red);font-size:12px;
               cursor:pointer;font-family:inherit">✕</button>
           </div>
-        </div>
-      </div>`).join('');
+        </div>`).join('');
+
+      return `
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-lg);margin-bottom:10px;overflow:hidden">
+          <!-- Owner group header -->
+          <div style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer"
+            onclick="const b=$('${groupId}');if(b)b.style.display=b.style.display==='none'?'block':'none'">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                ${esc(g.ownerEmail)}
+              </div>
+              <div style="font-size:12px;color:var(--lbl3);margin-top:2px">
+                ${g.locs.length} location${g.locs.length !== 1 ? 's' : ''}
+                <span style="margin-left:8px;padding:1px 7px;border-radius:100px;font-size:9px;font-weight:700;
+                  background:${statusBg};color:${statusColor}">${statusLabel}</span>
+              </div>
+            </div>
+            <div style="color:var(--lbl3);font-size:12px">▾</div>
+          </div>
+          <!-- Location rows (expanded by default) -->
+          <div id="${groupId}">
+            ${locationRows}
+          </div>
+        </div>`;
+    }).join('');
   }
 
   window._saSearch = function(q) {
