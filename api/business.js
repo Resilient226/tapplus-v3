@@ -14,6 +14,109 @@ const {
 
 const COL = 'businesses';
 
+// ── INPUT SANITIZATION ────────────────────────────────────────────────────────
+
+/**
+ * Strip HTML tags and dangerous characters from a string.
+ * Trims whitespace and enforces a max length.
+ */
+function sanitizeStr(val, maxLen = 200) {
+  if (typeof val !== 'string') return '';
+  return val
+    .replace(/<[^>]*>/g, '')           // strip HTML tags
+    .replace(/[<>"'`]/g, '')           // strip remaining dangerous chars
+    .trim()
+    .slice(0, maxLen);
+}
+
+/**
+ * Sanitize a PIN — digits only, 4-6 chars.
+ */
+function sanitizePin(val) {
+  if (typeof val !== 'string' && typeof val !== 'number') return '';
+  return String(val).replace(/\D/g, '').slice(0, 6);
+}
+
+/**
+ * Sanitize a URL — must start with http/https, max 500 chars.
+ */
+function sanitizeUrl(val) {
+  if (typeof val !== 'string') return '';
+  const trimmed = val.trim().slice(0, 500);
+  if (!/^https?:\/\//i.test(trimmed)) return '';
+  // Block javascript: and data: URIs that survived the prefix check
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return '';
+  return trimmed;
+}
+
+/**
+ * Sanitize a color hex value.
+ */
+function sanitizeColor(val) {
+  if (typeof val !== 'string') return '';
+  const match = val.trim().match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  return match ? val.trim() : '';
+}
+
+/**
+ * Recursively sanitize a branding object.
+ */
+function sanitizeBranding(b) {
+  if (!b || typeof b !== 'object') return {};
+  return {
+    name:               sanitizeStr(b.name, 100),
+    tagline:            sanitizeStr(b.tagline, 150),
+    logoUrl:            sanitizeUrl(b.logoUrl),
+    brandColor:         sanitizeColor(b.brandColor) || '#00e5a0',
+    bgColor:            sanitizeColor(b.bgColor) || '#07080c',
+    textColor:          sanitizeColor(b.textColor) || '#ffffff',
+    ratingQuestion:     sanitizeStr(b.ratingQuestion, 200),
+    reviewPrompt:       sanitizeStr(b.reviewPrompt, 300),
+    thankYouMsg:        sanitizeStr(b.thankYouMsg, 300),
+    lowRatingMsg:       sanitizeStr(b.lowRatingMsg, 300),
+    bulletinLinks:      Array.isArray(b.bulletinLinks)
+                          ? b.bulletinLinks.slice(0, 20).map(sanitizeBulletinLink)
+                          : [],
+    allowedStaffLinks:  sanitizeAllowedLinks(b.allowedStaffLinks),
+  };
+}
+
+function sanitizeBulletinLink(l) {
+  if (!l || typeof l !== 'object') return null;
+  return {
+    label: sanitizeStr(l.label, 80),
+    url:   sanitizeUrl(l.url),
+  };
+}
+
+function sanitizeAllowedLinks(a) {
+  if (!a || typeof a !== 'object') return {};
+  const keys = ['spotify','phone','email','instagram','tiktok','custom'];
+  const result = {};
+  for (const k of keys) result[k] = Boolean(a[k]);
+  return result;
+}
+
+/**
+ * Sanitize a links/platformLinks/reviewLinks array entry.
+ */
+function sanitizeLink(l) {
+  if (!l || typeof l !== 'object') return null;
+  return {
+    label:    sanitizeStr(l.label, 80),
+    url:      sanitizeUrl(l.url),
+    platform: sanitizeStr(l.platform, 40),
+    active:   typeof l.active === 'boolean' ? l.active : true,
+  };
+}
+
+function sanitizeLinks(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 50).map(sanitizeLink).filter(Boolean);
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+
 async function slugExists(slug, excludeId = null) {
   const snap = await db.collection(COL).where('slug', '==', slug).get();
   return snap.docs.some(d => d.id !== excludeId);
@@ -41,99 +144,103 @@ function sanitize(id, data, keepOwner = false) {
   return result;
 }
 
+// ── HANDLER ───────────────────────────────────────────────────────────────────
+
 module.exports = async function handler(req, res) {
   if (handleCors(req, res)) return;
 
   // ── GET ──────────────────────────────────────────────────────────────────
+
   if (req.method === 'GET') {
     const { slug, code, id } = req.query;
 
-    try {
-      if (id) {
-        const doc = await db.collection(COL).doc(id).get();
-        if (!doc.exists) return err(res, 'Business not found', 404);
-        return ok(res, { business: sanitize(doc.id, doc.data()) });
-      }
+    if (id) {
+      const doc = await db.collection(COL).doc(id).get();
+      if (!doc.exists) return err(res, 'Business not found', 404);
+      return ok(res, { business: sanitize(doc.id, doc.data()) });
+    }
 
-      if (slug) {
-        const snap = await db.collection(COL).where('slug', '==', slug).limit(1).get();
-        if (snap.empty) return err(res, 'Business not found', 404);
-        const doc = snap.docs[0];
-        return ok(res, { business: sanitize(doc.id, doc.data()) });
-      }
+    if (slug) {
+      const snap = await db.collection(COL).where('slug', '==', slug).limit(1).get();
+      if (snap.empty) return err(res, 'Business not found', 404);
+      const doc = snap.docs[0];
+      return ok(res, { business: sanitize(doc.id, doc.data()) });
+    }
 
-      if (code) {
-        const snap = await db.collection(COL).where('storeCode', '==', code).limit(1).get();
-        if (snap.empty) return err(res, 'Invalid store code', 404);
-        const doc = snap.docs[0];
-        const d = doc.data();
-        return ok(res, {
-          business: {
-            id: doc.id,
-            name: d.name,
-            slug: d.slug,
-            storeCode: d.storeCode,
-            branding: d.branding || {},
-            platformLinks: d.platformLinks || [],
-            reviewLinks: d.reviewLinks || [],
-            links: d.links || [],
-          }
-        });
-      }
+    if (code) {
+      const snap = await db.collection(COL).where('storeCode', '==', code).limit(1).get();
+      if (snap.empty) return err(res, 'Invalid store code', 404);
+      const doc = snap.docs[0];
+      const d = doc.data();
+      return ok(res, {
+        business: {
+          id: doc.id,
+          name: d.name,
+          slug: d.slug,
+          branding: d.branding || {},
+          platformLinks: d.platformLinks || [],
+          reviewLinks: d.reviewLinks || [],
+          links: d.links || [],
+        }
+      });
+    }
 
-      // List all businesses (superAdmin only)
-      if (req.query.listAll) {
-        const session = getSession(req);
-        const guard = requireRole(session, 'superAdmin');
-        if (guard) return err(res, guard.error, guard.status);
+    // List all businesses (superAdmin only)
+    if (req.query.listAll) {
+      const session = getSession(req);
+      const guard = requireRole(session, 'superAdmin');
+      if (guard) return err(res, guard.error, guard.status);
 
+      try {
         const snap = await db.collection(COL).get();
         const businesses = snap.docs
           .map(d => sanitize(d.id, d.data(), true))
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return ok(res, { businesses });
+      } catch (e) {
+        console.error('Business listAll error:', e.message);
+        return err(res, 'Database error: ' + e.message, 500);
       }
-
-      return err(res, 'Provide slug, code, or id');
-    } catch (e) {
-      console.error('Business GET error:', e.message);
-      return err(res, 'Database error: ' + e.message, 500);
     }
+
+    return err(res, 'Provide slug, code, or id');
   }
 
   // ── POST — Create business ───────────────────────────────────────────────
+
   if (req.method === 'POST') {
     const authHeader = req.headers['authorization'] || '';
     const token = authHeader.replace('Bearer ', '').trim();
     let uid_;
 
-    // 1. Try Firebase ID token first (new owner registration)
     try {
       const decoded = await auth.verifyIdToken(token);
       uid_ = decoded.uid;
     } catch {
-      // 2. Not a Firebase token — fall back to our JWT session token
-      // This handles existing owners adding a new location
       try {
         const session = getSession(req);
         if (session && (session.role === 'owner' || session.role === 'bizAdmin' || session.role === 'superAdmin')) {
           uid_ = session.uid || req.body?.ownerUid;
         }
-        // For owner role, uid comes from the Firebase token stored at login time.
-        // If session.uid is missing, we can't safely create a business.
-        if (!uid_) return err(res, 'Could not determine owner identity. Please sign out and sign in again.', 401);
+        if (!uid_) return err(res, 'Invalid Firebase Auth token', 401);
       } catch {
-        return err(res, 'Invalid auth token', 401);
+        return err(res, 'Invalid Firebase Auth token', 401);
       }
     }
 
-    const { name, adminPin, managerPin } = req.body || {};
-    if (!name) return err(res, 'Business name required');
-    if (!adminPin) return err(res, 'Admin PIN required');
-    if (!managerPin) return err(res, 'Manager PIN required');
-    if (adminPin.length < 4) return err(res, 'PIN must be at least 4 digits');
-    if (managerPin.length < 4) return err(res, 'Manager PIN must be at least 4 digits');
-    if (adminPin === managerPin) return err(res, 'Admin and manager PINs must be different');
+    const body = req.body || {};
+
+    // Sanitize all inputs
+    const name       = sanitizeStr(body.name, 100);
+    const adminPin   = sanitizePin(body.adminPin);
+    const managerPin = sanitizePin(body.managerPin);
+
+    if (!name)                          return err(res, 'Business name required');
+    if (!adminPin)                      return err(res, 'Admin PIN required');
+    if (!managerPin)                    return err(res, 'Manager PIN required');
+    if (adminPin.length < 4)            return err(res, 'PIN must be at least 4 digits');
+    if (managerPin.length < 4)          return err(res, 'Manager PIN must be at least 4 digits');
+    if (adminPin === managerPin)        return err(res, 'Admin and Manager PINs must be different');
 
     let slug = toSlug(name);
     if (await slugExists(slug)) slug = slug + '-' + uid().slice(0, 4);
@@ -147,6 +254,7 @@ module.exports = async function handler(req, res) {
       ownerId: uid_,
       adminPinHash: hashPin(adminPin),
       mgrPinHash: hashPin(managerPin),
+      subscriptionStatus: 'inactive',
       branding: {
         name,
         tagline: '',
@@ -157,7 +265,7 @@ module.exports = async function handler(req, res) {
         ratingQuestion: 'How was your experience today?',
         reviewPrompt: 'Glad to hear it! Share your experience:',
         thankYouMsg: 'Thank you! Your feedback means a lot.',
-        lowRatingMsg: "We're sorry. Tell us what happened:",
+        lowRatingMsg: "We\'re sorry. Tell us what happened:",
         bulletinLinks: [],
         allowedStaffLinks: {
           spotify: true, phone: false, email: false,
@@ -172,6 +280,7 @@ module.exports = async function handler(req, res) {
     };
 
     const ref = await db.collection(COL).add(bizData);
+
     return ok(res, {
       business: sanitize(ref.id, bizData),
       message: 'Business created',
@@ -179,9 +288,10 @@ module.exports = async function handler(req, res) {
   }
 
   // ── PUT — Update business ────────────────────────────────────────────────
+
   if (req.method === 'PUT') {
     const session = getSession(req);
-    const isManager = session?.role === 'manager';
+    const isManager  = session?.role === 'manager';
     const isBizAdmin = session?.role === 'bizAdmin' || session?.role === 'superAdmin';
 
     if (!isManager && !isBizAdmin) {
@@ -201,35 +311,76 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const updates = {};
 
-    const allowed = isBizAdmin
-      ? ['name', 'branding', 'links', 'teamGoals', 'platformLinks', 'reviewLinks', 'shifts']
-      : ['teamGoals'];
-
+    // SuperAdmin can update ownerId
     if (session.role === 'superAdmin' && body.ownerId !== undefined) {
-      updates.ownerId = body.ownerId;
+      updates.ownerId = sanitizeStr(body.ownerId, 128);
     }
 
-    for (const key of allowed) {
-      if (body[key] !== undefined) updates[key] = body[key];
+    // Managers can only update teamGoals
+    if (isManager) {
+      if (body.teamGoals !== undefined) {
+        updates.teamGoals = Array.isArray(body.teamGoals)
+          ? body.teamGoals.slice(0, 20).map(g => ({
+              label:  sanitizeStr(g?.label, 100),
+              target: typeof g?.target === 'number' ? g.target : 0,
+            }))
+          : [];
+      }
     }
 
+    // bizAdmin+ can update everything
     if (isBizAdmin) {
-      if (body.adminPin) updates.adminPinHash = hashPin(body.adminPin);
-      if (body.managerPin) updates.mgrPinHash = hashPin(body.managerPin);
-      if (body.name) {
-        let newSlug = toSlug(body.name);
+      if (body.name !== undefined) {
+        const newName = sanitizeStr(body.name, 100);
+        if (!newName) return err(res, 'Business name cannot be empty');
+        updates.name = newName;
+        let newSlug = toSlug(newName);
         if (await slugExists(newSlug, id)) newSlug = newSlug + '-' + uid().slice(0, 4);
         updates.slug = newSlug;
+      }
+      if (body.branding   !== undefined) updates.branding      = sanitizeBranding(body.branding);
+      if (body.links      !== undefined) updates.links         = sanitizeLinks(body.links);
+      if (body.platformLinks !== undefined) updates.platformLinks = sanitizeLinks(body.platformLinks);
+      if (body.reviewLinks   !== undefined) updates.reviewLinks   = sanitizeLinks(body.reviewLinks);
+      if (body.teamGoals  !== undefined) {
+        updates.teamGoals = Array.isArray(body.teamGoals)
+          ? body.teamGoals.slice(0, 20).map(g => ({
+              label:  sanitizeStr(g?.label, 100),
+              target: typeof g?.target === 'number' ? g.target : 0,
+            }))
+          : [];
+      }
+      if (body.shifts !== undefined) {
+        updates.shifts = Array.isArray(body.shifts)
+          ? body.shifts.slice(0, 50).map(s => ({
+              name:      sanitizeStr(s?.name, 80),
+              startTime: sanitizeStr(s?.startTime, 10),
+              endTime:   sanitizeStr(s?.endTime, 10),
+              days:      Array.isArray(s?.days) ? s.days.filter(d => typeof d === 'string').slice(0, 7) : [],
+            }))
+          : [];
+      }
+      if (body.adminPin)   updates.adminPinHash = hashPin(sanitizePin(body.adminPin));
+      if (body.managerPin) updates.mgrPinHash   = hashPin(sanitizePin(body.managerPin));
+    }
+
+    // SuperAdmin can force-set subscriptionStatus
+    if (session.role === 'superAdmin' && body.subscriptionStatus !== undefined) {
+      const allowed = ['active', 'inactive', 'canceled', 'past_due', 'trialing'];
+      if (allowed.includes(body.subscriptionStatus)) {
+        updates.subscriptionStatus = body.subscriptionStatus;
       }
     }
 
     updates.updatedAt = Date.now();
+
     await db.collection(COL).doc(id).update(updates);
     const updated = await db.collection(COL).doc(id).get();
     return ok(res, { business: sanitize(updated.id, updated.data()) });
   }
 
   // ── DELETE ───────────────────────────────────────────────────────────────
+
   if (req.method === 'DELETE') {
     const session = getSession(req);
     const guard = requireRole(session, 'superAdmin');
@@ -238,19 +389,10 @@ module.exports = async function handler(req, res) {
     const { id } = req.query;
     if (!id) return err(res, 'Business ID required');
 
-    // Delete staff subcollection
     const staffSnap = await db.collection(COL).doc(id).collection('staff').get();
     const batch = db.batch();
     staffSnap.docs.forEach(d => batch.delete(d.ref));
     await batch.commit();
-
-    // Delete orphaned taps (in chunks to handle >500)
-    const tapsSnap = await db.collection('taps').where('bizId', '==', id).get();
-    for (let i = 0; i < tapsSnap.docs.length; i += 500) {
-      const tapBatch = db.batch();
-      tapsSnap.docs.slice(i, i + 500).forEach(d => tapBatch.delete(d.ref));
-      await tapBatch.commit();
-    }
 
     await db.collection(COL).doc(id).delete();
     return ok(res, { message: 'Business deleted' });
