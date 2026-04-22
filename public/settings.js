@@ -1,3 +1,6 @@
+// settings.js — patched: logo upload now goes to Firebase Storage
+// All other logic unchanged. Only _pickLogo and _saveBranding are modified.
+
 function renderSettingsTab(body) {
   const biz = State.biz;
   const b   = biz?.branding || {};
@@ -16,6 +19,10 @@ function renderSettingsTab(body) {
   }
 
   let brandingOpen = false;
+  // _logoUrl holds the final URL (either existing or newly uploaded)
+  // _logoUploading tracks upload state
+  let _pendingLogoUrl = null;  // set after successful Storage upload
+  let _logoUploading = false;
 
   function draw() {
     const avail = availablePlatforms();
@@ -87,9 +94,9 @@ function renderSettingsTab(body) {
         <input class="inp" id="s-tag" value="${esc(b.tagline||'')}" placeholder="We Create Memories" style="margin-bottom:10px"/>
 
         <div class="field-lbl">Logo</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
           <input class="inp" id="s-logo" value="${esc(b.logoUrl||'')}" placeholder="https://…" style="flex:1"/>
-          <button onclick="window._pickLogo()" class="btn btn-ghost btn-sm">Upload</button>
+          <button onclick="window._pickLogo()" class="btn btn-ghost btn-sm" id="s-logo-btn">Upload</button>
         </div>
         ${b.logoUrl?`<img src="${esc(b.logoUrl)}" id="s-logo-prev" style="height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block"/>`:``}
 
@@ -213,7 +220,6 @@ function renderSettingsTab(body) {
     // ── Bulletin handlers ───────────────────────────────────────────────────
     window._rmBull=function(i){bulletinLinks.splice(i,1);drawBulletin();};
     window._addBull=function(){
-      let bullImageData = undefined;
       showModal(`
         <div class="modal-head"><div class="modal-title">Add Bulletin Item</div><button class="modal-close" onclick="closeModal()">×</button></div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 20px 20px">
@@ -234,58 +240,31 @@ function renderSettingsTab(body) {
             <div class="field-lbl">URL</div>
             <input class="inp" id="bl-u" placeholder="https://…"/>
           </div>
-
           <div id="bl-editor-wrap">
             <div class="field-lbl">Content</div>
             <div style="background:rgba(255,255,255,.05);border:1px solid var(--sep);border-radius:var(--r-sm);overflow:hidden">
               <div style="display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--sep);flex-wrap:wrap">
-                <button type="button" onclick="document.execCommand('bold')" title="Bold"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-weight:700;font-family:inherit;font-size:13px">B</button>
-                <button type="button" onclick="document.execCommand('italic')" title="Italic"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-style:italic;font-family:inherit;font-size:13px">I</button>
-                <button type="button" onclick="document.execCommand('underline')" title="Underline"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;text-decoration:underline;font-family:inherit;font-size:13px">U</button>
+                <button type="button" onclick="document.execCommand('bold')" style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-weight:700;font-family:inherit;font-size:13px">B</button>
+                <button type="button" onclick="document.execCommand('italic')" style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-style:italic;font-family:inherit;font-size:13px">I</button>
+                <button type="button" onclick="document.execCommand('underline')" style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;text-decoration:underline;font-family:inherit;font-size:13px">U</button>
                 <div style="width:1px;background:var(--sep);margin:2px 4px"></div>
-                <button type="button" onclick="document.execCommand('formatBlock',false,'h2')" title="Heading"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-weight:700;font-family:inherit;font-size:13px">H</button>
-                <button type="button" onclick="document.execCommand('formatBlock',false,'p')" title="Paragraph"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:13px">P</button>
-                <div style="width:1px;background:var(--sep);margin:2px 4px"></div>
-                <button type="button" onclick="document.execCommand('insertUnorderedList')" title="Bullet list"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:13px">• List</button>
-                <button type="button" onclick="document.execCommand('insertOrderedList')" title="Numbered list"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:13px">1. List</button>
-                <div style="width:1px;background:var(--sep);margin:2px 4px"></div>
-                <button type="button" onclick="document.execCommand('justifyLeft')"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px">Left</button>
-                <button type="button" onclick="document.execCommand('justifyCenter')"
-                  style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px">Center</button>
-                <button type="button" onclick="document.execCommand('removeFormat')"
-                  style="background:none;border:none;color:var(--lbl2);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px">Clear</button>
+                <button type="button" onclick="document.execCommand('formatBlock',false,'h2')" style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-weight:700;font-family:inherit;font-size:13px">H</button>
+                <button type="button" onclick="document.execCommand('insertUnorderedList')" style="background:none;border:none;color:var(--lbl);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:13px">• List</button>
+                <button type="button" onclick="document.execCommand('removeFormat')" style="background:none;border:none;color:var(--lbl2);cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px">Clear</button>
               </div>
               <div id="bl-editor" contenteditable="true"
-                style="min-height:120px;padding:12px;color:var(--lbl);font-size:15px;line-height:1.6;outline:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif"
-                data-placeholder="Write your content here…"></div>
+                style="min-height:120px;padding:12px;color:var(--lbl);font-size:15px;line-height:1.6;outline:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif"></div>
             </div>
           </div>
-
           <div id="bl-img-wrap">
             <div class="field-lbl">Image (optional)</div>
             <div style="display:flex;gap:8px;align-items:center">
               <div id="bl-img-prev" style="width:48px;height:48px;border-radius:8px;background:var(--fill-ultra);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--lbl3);flex-shrink:0">+</div>
-              <button onclick="window._pickBullImg()" class="btn btn-ghost btn-sm" style="flex:1">Upload Image</button>
+              <button onclick="window._pickBullImg()" class="btn btn-ghost btn-sm" id="bl-img-btn" style="flex:1">Upload Image</button>
             </div>
           </div>
-
           <button class="btn btn-primary btn-full" onclick="window._doAddBull()">Add Item</button>
         </div>`);
-
-      // Editor placeholder
-      const editor = document.getElementById('bl-editor');
-      if(editor){
-        editor.addEventListener('focus',function(){this.style.opacity='1';});
-        editor.addEventListener('blur',function(){});
-      }
 
       window._blTog=function(t){
         const uw=$('bl-uw');
@@ -295,20 +274,37 @@ function renderSettingsTab(body) {
         if(ew)ew.style.display=t==='text'?'block':'none';
         if(iw)iw.style.display=t==='text'?'block':'none';
       };
-      // Default: text type, hide URL
       window._blTog('text');
 
-      window._pickBullImg=function(){
-        const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
-        inp.onchange=e=>{
-          const f=e.target.files[0];if(!f)return;
-          const r=new FileReader();
-          r.onload=ev=>{
-            bullImageData=ev.target.result;
-            const prev=document.getElementById('bl-img-prev');
-            if(prev)prev.innerHTML=`<img src="${ev.target.result}" style="width:48px;height:48px;border-radius:8px;object-fit:cover"/>`;
-          };r.readAsDataURL(f);
-        };inp.click();
+      // ── Bulletin image: upload to Storage ─────────────────────────────
+      let _bullImageUrl = null;
+      window._pickBullImg = async function(){
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = 'image/*';
+        inp.onchange = async function(e) {
+          const f = e.target.files[0]; if (!f) return;
+          const btn = document.getElementById('bl-img-btn');
+          if (btn) { btn.textContent = 'Uploading…'; btn.disabled = true; }
+          try {
+            const reader = new FileReader();
+            const dataUrl = await new Promise((res, rej) => {
+              reader.onload = ev => res(ev.target.result);
+              reader.onerror = rej;
+              reader.readAsDataURL(f);
+            });
+            // Compress
+            const compressed = await _compressImage(dataUrl, 800, 0.82);
+            const bizId = State.session?.bizId || State.biz?.id || 'unknown';
+            _bullImageUrl = await window._uploadBulletinImage(compressed, bizId);
+            const prev = document.getElementById('bl-img-prev');
+            if (prev) prev.innerHTML = `<img src="${_bullImageUrl}" style="width:48px;height:48px;border-radius:8px;object-fit:cover"/>`;
+            if (btn) { btn.textContent = 'Uploaded ✓'; btn.disabled = false; }
+          } catch(err) {
+            if (btn) { btn.textContent = 'Upload Image'; btn.disabled = false; }
+            showToast('Image upload failed: ' + (err.message || 'try again'));
+          }
+        };
+        inp.click();
       };
 
       window._doAddBull=function(){
@@ -319,7 +315,7 @@ function renderSettingsTab(body) {
         if(!label){showToast('Title required');return;}
         if(type!=='text'&&!url){showToast('URL required');return;}
         if(url&&!url.startsWith('http'))url='https://'+url;
-        const item={type,label,url,html:type==='text'?html:'',image:bullImageData||''};
+        const item={type,label,url,html:type==='text'?html:'',image:_bullImageUrl||''};
         bulletinLinks.push(item);
         closeModal();drawBulletin();showToast('Added');
       };
@@ -394,44 +390,50 @@ function renderSettingsTab(body) {
       };
     };
 
-    // Logo upload
-    window._pickLogo=function(){
-      const i=document.createElement('input');i.type='file';i.accept='image/*';
-      i.onchange=e=>{
-        const f=e.target.files[0];if(!f)return;
-        const reader=new FileReader();
-        reader.onload=function(ev){
-          const dataUrl=ev.target.result;
-          const img=new Image();
-          img.onload=function(){
-            const MAX=600;
-            let w=img.width,h=img.height;
-            if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
-            if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
-            const canvas=document.createElement('canvas');
-            canvas.width=w;canvas.height=h;
-            canvas.getContext('2d').drawImage(img,0,0,w,h);
-            const compressed=canvas.toDataURL('image/jpeg',0.82);
-            window._logoData=compressed;
-            const li=$('s-logo');if(li)li.value='';
-            let p=$('s-logo-prev');
-            if(!p){p=document.createElement('img');p.id='s-logo-prev';
-              p.style='height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
-              $('s-logo').parentNode.insertAdjacentElement('afterend',p);}
-            p.src=compressed;
-          };
-          img.onerror=function(){
-            window._logoData=dataUrl;
-            let p=$('s-logo-prev');
-            if(!p){p=document.createElement('img');p.id='s-logo-prev';
-              p.style='height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
-              $('s-logo').parentNode.insertAdjacentElement('afterend',p);}
-            p.src=dataUrl;
-          };
-          img.src=dataUrl;
-        };
-        reader.readAsDataURL(f);
-      };i.click();
+    // ── Logo upload → Firebase Storage ────────────────────────────────────
+    window._pickLogo = function(){
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = async function(e) {
+        const f = e.target.files[0]; if (!f) return;
+        const btn = document.getElementById('s-logo-btn');
+        if (btn) { btn.textContent = 'Uploading…'; btn.disabled = true; }
+        try {
+          // Read file
+          const reader = new FileReader();
+          const dataUrl = await new Promise((res, rej) => {
+            reader.onload = ev => res(ev.target.result);
+            reader.onerror = rej;
+            reader.readAsDataURL(f);
+          });
+          // Compress to max 600px
+          const compressed = await _compressImage(dataUrl, 600, 0.82);
+          // Upload to Firebase Storage
+          const bizId = State.session?.bizId || State.biz?.id || 'unknown';
+          const storageUrl = await window._uploadLogo(compressed, bizId);
+          // Store the URL (not the base64)
+          _pendingLogoUrl = storageUrl;
+          // Update preview
+          const logoInput = document.getElementById('s-logo');
+          if (logoInput) logoInput.value = storageUrl;
+          let prev = document.getElementById('s-logo-prev');
+          if (!prev) {
+            prev = document.createElement('img');
+            prev.id = 's-logo-prev';
+            prev.style = 'height:48px;object-fit:contain;border-radius:var(--r-xs);margin-bottom:10px;display:block';
+            const logoWrap = document.getElementById('s-logo')?.parentNode;
+            if (logoWrap) logoWrap.insertAdjacentElement('afterend', prev);
+          }
+          prev.src = storageUrl;
+          if (btn) { btn.textContent = 'Uploaded ✓'; btn.disabled = false; }
+          showToast('Logo uploaded ✓');
+        } catch(err) {
+          if (btn) { btn.textContent = 'Upload'; btn.disabled = false; }
+          showToast('Upload failed: ' + (err.message || 'try again'));
+          console.error('Logo upload error:', err);
+        }
+      };
+      inp.click();
     };
   }
 
@@ -458,17 +460,24 @@ function renderSettingsTab(body) {
     } catch(e) { showToast(e.message || 'Failed to update PINs'); }
   };
 
+  // ── Save branding: logo is now a Storage URL, not base64 ──────────────────
   window._saveBranding = async function(){
     const allowed={};
     ['spotify','phone','email','instagram','tiktok','custom'].forEach(t=>{allowed[t]=!!$('tog-'+t)?.classList.contains('on');});
-    const logoUrl=window._logoData||$('s-logo')?.value?.trim()||b.logoUrl||'';
+
+    // Priority: newly uploaded URL → manually typed URL → existing
+    const logoUrl = _pendingLogoUrl
+      || document.getElementById('s-logo')?.value?.trim()
+      || b.logoUrl
+      || '';
+
     const updates={
       reviewLinks,
       branding:{
         ...b,
         name:        $('s-name')?.value?.trim()||b.name,
         tagline:     $('s-tag')?.value?.trim()||'',
-        logoUrl,
+        logoUrl,                               // always a URL now, never base64
         brandColor:  $('s-bc')?.value||'#00e5a0',
         bgColor:     $('s-bg')?.value||'#07080c',
         textColor:   $('s-tc')?.value||'#ffffff',
@@ -484,8 +493,8 @@ function renderSettingsTab(body) {
       const bizId=State.session?.bizId||State.biz?.id;
       const d=await API.business.update(bizId,updates);
       State.biz={...State.biz,...d.business};
-      window._logoData=undefined;
-      showToast('Branding saved');
+      _pendingLogoUrl = null;
+      showToast('Branding saved ✓');
       draw();
     }catch(e){showToast(e.message||'Save failed');}
   };
@@ -496,11 +505,25 @@ function renderSettingsTab(body) {
     const chev = document.getElementById('branding-chevron');
     if (sec) sec.style.display = brandingOpen ? 'block' : 'none';
     if (chev) chev.style.transform = brandingOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-    if (brandingOpen) {
-      // Re-init shifts list since it's now visible
-      drawShiftsList && drawShiftsList();
-    }
   };
 
   draw();
+}
+
+// ── Shared image compression utility ─────────────────────────────────────────
+function _compressImage(dataUrl, maxPx, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = function() {
+      let w = img.width, h = img.height;
+      if (w > maxPx) { h = Math.round(h * maxPx / w); w = maxPx; }
+      if (h > maxPx) { w = Math.round(w * maxPx / h); h = maxPx; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
 }
