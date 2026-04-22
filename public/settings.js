@@ -50,6 +50,24 @@ window._uploadBulletinImage = function(dataUrl, bizId) {
   return _uploadToStorage(dataUrl, path);
 };
 
+// ── Shared image compression utility ─────────────────────────────────────────
+function _compressImage(dataUrl, maxPx, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = function() {
+      let w = img.width, h = img.height;
+      if (w > maxPx) { h = Math.round(h * maxPx / w); w = maxPx; }
+      if (h > maxPx) { w = Math.round(w * maxPx / h); h = maxPx; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 // settings.js — patched: logo upload now goes to Firebase Storage
 // All other logic unchanged. Only _pickLogo and _saveBranding are modified.
 
@@ -560,22 +578,4 @@ function renderSettingsTab(body) {
   };
 
   draw();
-}
-
-// ── Shared image compression utility ─────────────────────────────────────────
-function _compressImage(dataUrl, maxPx, quality) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = function() {
-      let w = img.width, h = img.height;
-      if (w > maxPx) { h = Math.round(h * maxPx / w); w = maxPx; }
-      if (h > maxPx) { w = Math.round(w * maxPx / h); h = maxPx; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
 }
