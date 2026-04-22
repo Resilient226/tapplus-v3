@@ -578,3 +578,4 @@ function _compressImage(dataUrl, maxPx, quality) {
     img.onerror = reject;
     img.src = dataUrl;
   });
+}
