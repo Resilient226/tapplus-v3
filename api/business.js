@@ -38,15 +38,20 @@ function sanitizePin(val) {
 }
 
 /**
- * Sanitize a URL — must start with http/https, max 500 chars.
+ * Sanitize a URL — must start with http/https or data: (for images), max 2MB.
  */
-function sanitizeUrl(val) {
+function sanitizeUrl(val, allowData = false) {
   if (typeof val !== 'string') return '';
-  const trimmed = val.trim().slice(0, 500);
-  if (!/^https?:\/\//i.test(trimmed)) return '';
-  // Block javascript: and data: URIs that survived the prefix check
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) return '';
-  return trimmed;
+  const trimmed = val.trim();
+  // Allow base64 data URLs for images (logo, staff photo)
+  if (allowData && /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(trimmed)) {
+    // Cap at 2MB (base64 encoded ~2.7MB raw)
+    return trimmed.slice(0, 2 * 1024 * 1024);
+  }
+  const clipped = trimmed.slice(0, 500);
+  if (!/^https?:\/\//i.test(clipped)) return '';
+  if (/^(javascript|vbscript):/i.test(clipped)) return '';
+  return clipped;
 }
 
 /**
@@ -66,7 +71,7 @@ function sanitizeBranding(b) {
   return {
     name:               sanitizeStr(b.name, 100),
     tagline:            sanitizeStr(b.tagline, 150),
-    logoUrl:            sanitizeUrl(b.logoUrl),
+    logoUrl:            sanitizeUrl(b.logoUrl, true),  // allow data: URLs
     brandColor:         sanitizeColor(b.brandColor) || '#00e5a0',
     bgColor:            sanitizeColor(b.bgColor) || '#07080c',
     textColor:          sanitizeColor(b.textColor) || '#ffffff',
@@ -107,6 +112,7 @@ function sanitizeLink(l) {
     url:      sanitizeUrl(l.url),
     platform: sanitizeStr(l.platform, 40),
     active:   typeof l.active === 'boolean' ? l.active : true,
+    icon:     l.icon ? sanitizeStr(l.icon, 10) : undefined,
   };
 }
 
