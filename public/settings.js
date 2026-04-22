@@ -1,3 +1,55 @@
+// ── Firebase Storage upload (self-contained, no extra file needed) ─────────────
+async function _uploadToStorage(dataUrl, path) {
+  const BUCKET  = 'tapplus-a2d09.appspot.com';
+  const BASE    = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o`;
+
+  let authToken = null;
+  try {
+    if (window._fbAuth?.currentUser) {
+      authToken = await window._fbAuth.currentUser.getIdToken();
+    }
+  } catch(e) {}
+
+  // Convert base64 data URL → Blob
+  const [header, b64] = dataUrl.split(',');
+  const contentType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
+  const binary = atob(b64);
+  const arr = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+  const blob = new Blob([arr], { type: contentType });
+
+  const encodedPath = encodeURIComponent(path);
+  const uploadUrl   = `${BASE}/${encodedPath}?uploadType=media&name=${encodedPath}`;
+  const headers     = { 'Content-Type': contentType };
+  if (authToken) headers['Authorization'] = `Firebase ${authToken}`;
+
+  const res = await fetch(uploadUrl, { method: 'POST', headers, body: blob });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Storage upload failed (${res.status})`);
+  }
+  const data = await res.json();
+  return `${BASE}/${encodeURIComponent(data.name)}?alt=media&token=${data.downloadTokens}`;
+}
+
+window._uploadLogo = function(dataUrl, bizId) {
+  const ext  = dataUrl.startsWith('data:image/png') ? 'png' : 'jpg';
+  const path = `logos/${bizId}_${Date.now()}.${ext}`;
+  return _uploadToStorage(dataUrl, path);
+};
+
+window._uploadStaffPhoto = function(dataUrl, bizId, staffId) {
+  const ext  = dataUrl.startsWith('data:image/png') ? 'png' : 'jpg';
+  const path = `staff/${bizId}_${staffId}_${Date.now()}.${ext}`;
+  return _uploadToStorage(dataUrl, path);
+};
+
+window._uploadBulletinImage = function(dataUrl, bizId) {
+  const ext  = dataUrl.startsWith('data:image/png') ? 'png' : 'jpg';
+  const path = `bulletin/${bizId}_${Date.now()}.${ext}`;
+  return _uploadToStorage(dataUrl, path);
+};
+
 // settings.js — patched: logo upload now goes to Firebase Storage
 // All other logic unchanged. Only _pickLogo and _saveBranding are modified.
 
@@ -526,4 +578,3 @@ function _compressImage(dataUrl, maxPx, quality) {
     img.onerror = reject;
     img.src = dataUrl;
   });
-}
