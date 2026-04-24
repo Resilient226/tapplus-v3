@@ -8,7 +8,7 @@ function renderSettingsTab(body) {
 
   function availablePlatforms() {
     const added = new Set(reviewLinks.map(l => l.platform));
-    return platformLinks.filter(p => p.enabled && !added.has(p.platform));
+    return platformLinks.filter(p => (p.enabled || p.active) && !added.has(p.platform));
   }
   function _platIcon(p, linkObj) {
     if (linkObj && linkObj.icon) return linkObj.icon;
@@ -113,7 +113,7 @@ function renderSettingsTab(body) {
         <div style="font-weight:600;font-size:15px;margin-bottom:4px">Review Links</div>
         <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">First = 5★ auto-redirect · 4★ shows all · Drag to reorder</div>
         <div id="rl-list" style="margin-bottom:12px">
-          ${reviewLinks.length===0
+          ${platformLinks.length===0
             ? `<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No review links yet.</div>`
             : reviewLinks.map((l,i)=>`
               <div draggable="true" ondragstart="window._rlDs(${i})" ondragover="event.preventDefault()" ondrop="window._rlDr(${i})"
