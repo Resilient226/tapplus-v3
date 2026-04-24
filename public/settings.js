@@ -132,7 +132,7 @@ function renderSettingsTab(body) {
         </div>
         ${avail.length>0
           ? `<button onclick="window._rlAdd()" class="btn btn-ghost btn-full" style="margin-bottom:4px">+ Add Review Platform</button>`
-          : reviewLinks.length===0
+          : platformLinks.length===0
             ? `<div style="background:rgba(255,165,0,.06);border:1px solid rgba(255,165,0,.2);border-radius:var(--r-sm);padding:12px;font-size:12px;color:rgba(255,165,0,.8);text-align:center">No platforms configured — contact your administrator.</div>`
             : `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-sm);padding:10px;font-size:12px;color:var(--lbl2);text-align:center">All available platforms added.</div>`
         }
