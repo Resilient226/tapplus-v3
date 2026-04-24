@@ -90,13 +90,14 @@ function sanitizeAllowedLinks(a) {
 
 function sanitizeLink(l) {
   if (!l || typeof l !== 'object') return null;
-  return {
+  const out = {
     label:    sanitizeStr(l.label, 80),
     url:      sanitizeUrl(l.url),
     platform: sanitizeStr(l.platform, 40),
     active:   typeof l.active === 'boolean' ? l.active : true,
-    icon:     l.icon ? sanitizeStr(l.icon, 10) : undefined,
   };
+  if (l.icon) out.icon = sanitizeStr(l.icon, 10);
+  return out;
 }
 
 function sanitizeLinks(arr) {
@@ -348,9 +349,17 @@ module.exports = async function handler(req, res) {
 
     updates.updatedAt = Date.now();
 
-    await db.collection(COL).doc(id).update(updates);
-    const updated = await db.collection(COL).doc(id).get();
-    return ok(res, { business: sanitize(updated.id, updated.data()) });
+    try {
+      await db.collection(COL).doc(id).update(updates);
+      const updated = await db.collection(COL).doc(id).get();
+      return ok(res, { business: sanitize(updated.id, updated.data()) });
+    } catch (e) {
+      console.error('Business update error:', e.message, e.code || '');
+      const msg = /too large|maximum size|1 MiB|exceeds the max/i.test(e.message || '')
+        ? 'Data too large to save (Firestore 1MB document limit). Try a smaller logo or fewer bulletin images.'
+        : (e.message || 'Failed to update business');
+      return err(res, msg, 500);
+    }
   }
 
   // ── DELETE ───────────────────────────────────────────────────────────────
@@ -373,3 +382,4 @@ module.exports = async function handler(req, res) {
   }
 
   return err(res, 'Method not allowed', 405);
+};
