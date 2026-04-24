@@ -16,37 +16,26 @@ const COL = 'businesses';
 
 // ── INPUT SANITIZATION ────────────────────────────────────────────────────────
 
-/**
- * Strip HTML tags and dangerous characters from a string.
- * Trims whitespace and enforces a max length.
- */
 function sanitizeStr(val, maxLen = 200) {
   if (typeof val !== 'string') return '';
   return val
-    .replace(/<[^>]*>/g, '')           // strip HTML tags
-    .replace(/[<>"'`]/g, '')           // strip remaining dangerous chars
+    .replace(/<[^>]*>/g, '')
+    .replace(/[<>"'`]/g, '')
     .trim()
     .slice(0, maxLen);
 }
 
-/**
- * Sanitize a PIN — digits only, 4-6 chars.
- */
 function sanitizePin(val) {
   if (typeof val !== 'string' && typeof val !== 'number') return '';
   return String(val).replace(/\D/g, '').slice(0, 6);
 }
 
-/**
- * Sanitize a URL — must start with http/https or data: (for images), max 2MB.
- */
 function sanitizeUrl(val, allowData = false) {
   if (typeof val !== 'string') return '';
   const trimmed = val.trim();
   // Allow base64 data URLs for images (logo, staff photo)
   if (allowData && /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(trimmed)) {
-    // Cap at 2MB (base64 encoded ~2.7MB raw)
-    return trimmed.slice(0, 2 * 1024 * 1024);
+    return trimmed.slice(0, 5 * 1024 * 1024); // 5MB cap
   }
   const clipped = trimmed.slice(0, 500);
   if (!/^https?:\/\//i.test(clipped)) return '';
@@ -54,18 +43,12 @@ function sanitizeUrl(val, allowData = false) {
   return clipped;
 }
 
-/**
- * Sanitize a color hex value.
- */
 function sanitizeColor(val) {
   if (typeof val !== 'string') return '';
   const match = val.trim().match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
   return match ? val.trim() : '';
 }
 
-/**
- * Recursively sanitize a branding object.
- */
 function sanitizeBranding(b) {
   if (!b || typeof b !== 'object') return {};
   return {
@@ -80,7 +63,7 @@ function sanitizeBranding(b) {
     thankYouMsg:        sanitizeStr(b.thankYouMsg, 300),
     lowRatingMsg:       sanitizeStr(b.lowRatingMsg, 300),
     bulletinLinks:      Array.isArray(b.bulletinLinks)
-                          ? b.bulletinLinks.slice(0, 20).map(sanitizeBulletinLink)
+                          ? b.bulletinLinks.slice(0, 20).map(sanitizeBulletinLink).filter(Boolean)
                           : [],
     allowedStaffLinks:  sanitizeAllowedLinks(b.allowedStaffLinks),
   };
@@ -89,8 +72,11 @@ function sanitizeBranding(b) {
 function sanitizeBulletinLink(l) {
   if (!l || typeof l !== 'object') return null;
   return {
+    type:  l.type  ? sanitizeStr(l.type, 20)  : 'text',
     label: sanitizeStr(l.label, 80),
     url:   sanitizeUrl(l.url),
+    html:  l.html  ? sanitizeStr(l.html, 5000) : '',
+    image: l.image ? sanitizeUrl(l.image, true) : '',
   };
 }
 
@@ -102,9 +88,6 @@ function sanitizeAllowedLinks(a) {
   return result;
 }
 
-/**
- * Sanitize a links/platformLinks/reviewLinks array entry.
- */
 function sanitizeLink(l) {
   if (!l || typeof l !== 'object') return null;
   return {
@@ -191,7 +174,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // List all businesses (superAdmin only)
     if (req.query.listAll) {
       const session = getSession(req);
       const guard = requireRole(session, 'superAdmin');
@@ -212,7 +194,7 @@ module.exports = async function handler(req, res) {
     return err(res, 'Provide slug, code, or id');
   }
 
-  // ── POST — Create business ───────────────────────────────────────────────
+  // ── POST ─────────────────────────────────────────────────────────────────
 
   if (req.method === 'POST') {
     const authHeader = req.headers['authorization'] || '';
@@ -235,8 +217,6 @@ module.exports = async function handler(req, res) {
     }
 
     const body = req.body || {};
-
-    // Sanitize all inputs
     const name       = sanitizeStr(body.name, 100);
     const adminPin   = sanitizePin(body.adminPin);
     const managerPin = sanitizePin(body.managerPin);
@@ -286,30 +266,22 @@ module.exports = async function handler(req, res) {
     };
 
     const ref = await db.collection(COL).add(bizData);
-
-    return ok(res, {
-      business: sanitize(ref.id, bizData),
-      message: 'Business created',
-    }, 201);
+    return ok(res, { business: sanitize(ref.id, bizData), message: 'Business created' }, 201);
   }
 
-  // ── PUT — Update business ────────────────────────────────────────────────
+  // ── PUT ──────────────────────────────────────────────────────────────────
 
   if (req.method === 'PUT') {
     const session = getSession(req);
     const isManager  = session?.role === 'manager';
     const isBizAdmin = session?.role === 'bizAdmin' || session?.role === 'superAdmin';
 
-    if (!isManager && !isBizAdmin) {
-      return err(res, 'Forbidden', 403);
-    }
+    if (!isManager && !isBizAdmin) return err(res, 'Forbidden', 403);
 
     const { id } = req.query;
     if (!id) return err(res, 'Business ID required');
 
-    if (session.role !== 'superAdmin' && session.bizId !== id) {
-      return err(res, 'Forbidden', 403);
-    }
+    if (session.role !== 'superAdmin' && session.bizId !== id) return err(res, 'Forbidden', 403);
 
     const doc = await db.collection(COL).doc(id).get();
     if (!doc.exists) return err(res, 'Business not found', 404);
@@ -317,12 +289,10 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const updates = {};
 
-    // SuperAdmin can update ownerId
     if (session.role === 'superAdmin' && body.ownerId !== undefined) {
       updates.ownerId = sanitizeStr(body.ownerId, 128);
     }
 
-    // Managers can only update teamGoals
     if (isManager) {
       if (body.teamGoals !== undefined) {
         updates.teamGoals = Array.isArray(body.teamGoals)
@@ -334,7 +304,6 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // bizAdmin+ can update everything
     if (isBizAdmin) {
       if (body.name !== undefined) {
         const newName = sanitizeStr(body.name, 100);
@@ -344,11 +313,11 @@ module.exports = async function handler(req, res) {
         if (await slugExists(newSlug, id)) newSlug = newSlug + '-' + uid().slice(0, 4);
         updates.slug = newSlug;
       }
-      if (body.branding   !== undefined) updates.branding      = sanitizeBranding(body.branding);
-      if (body.links      !== undefined) updates.links         = sanitizeLinks(body.links);
+      if (body.branding      !== undefined) updates.branding      = sanitizeBranding(body.branding);
+      if (body.links         !== undefined) updates.links         = sanitizeLinks(body.links);
       if (body.platformLinks !== undefined) updates.platformLinks = sanitizeLinks(body.platformLinks);
       if (body.reviewLinks   !== undefined) updates.reviewLinks   = sanitizeLinks(body.reviewLinks);
-      if (body.teamGoals  !== undefined) {
+      if (body.teamGoals     !== undefined) {
         updates.teamGoals = Array.isArray(body.teamGoals)
           ? body.teamGoals.slice(0, 20).map(g => ({
               label:  sanitizeStr(g?.label, 100),
@@ -370,7 +339,6 @@ module.exports = async function handler(req, res) {
       if (body.managerPin) updates.mgrPinHash   = hashPin(sanitizePin(body.managerPin));
     }
 
-    // SuperAdmin can force-set subscriptionStatus
     if (session.role === 'superAdmin' && body.subscriptionStatus !== undefined) {
       const allowed = ['active', 'inactive', 'canceled', 'past_due', 'trialing'];
       if (allowed.includes(body.subscriptionStatus)) {
