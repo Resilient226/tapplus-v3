@@ -702,22 +702,18 @@ async function saBiz() {
       return;
     }
 
-    // Group by ownerId
     const groups = {};
     businesses.forEach(b => {
       const key = b.ownerId || '__none__';
       if (!groups[key]) {
-        // FIX: Use business name as group label, not raw Firebase UID
         const label = b.name || 'Unknown Account';
         groups[key] = { ownerId: key, label, locs: [] };
       }
       groups[key].locs.push(b);
     });
 
-    // For multi-location accounts, use the shared name prefix or first biz name
     Object.values(groups).forEach(g => {
       if (g.locs.length > 1) {
-        // Try to find a common prefix, else use first biz name
         const firstName = g.locs[0].name || '';
         const firstWord = firstName.split(' ')[0];
         const allShare = g.locs.every(b => b.name?.startsWith(firstWord));
@@ -868,12 +864,11 @@ async function saBiz() {
     let settingsTab = 'pins';
     let bizData = null;
 
-    // Load full biz data for links
     API.business.getById(bizId).then(d => {
       bizData = d.business;
       refreshSettingsModal();
     }).catch(() => {
-      bizData = { id: bizId, name: bizName, reviewLinks: [], platformLinks: [] };
+      bizData = { id: bizId, name: bizName, reviewLinks: [] };
       refreshSettingsModal();
     });
 
@@ -910,20 +905,19 @@ async function saBiz() {
 
       if (settingsTab === 'links') {
         const reviewLinks = bizData?.reviewLinks || [];
-        const platformLinks = bizData?.platformLinks || [];
         tabContent = `
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Review Links</div>
             <div id="bs-review-links">
               ${reviewLinks.length === 0
-                ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No review links set.</div>`
+                ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No review links yet.</div>`
                 : reviewLinks.map((l, i) => `
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                       <div style="flex:1;min-width:0">
                         <div style="font-size:13px;font-weight:500">${esc(l.label || l.platform || 'Link')}</div>
                         <div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url || '')}</div>
                       </div>
-                      <button onclick="window._saRemoveLink('review',${i})"
+                      <button onclick="window._saRemoveLink(${i})"
                         style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-xs);
                         padding:4px 8px;color:var(--ios-red);font-size:11px;cursor:pointer;flex-shrink:0">✕</button>
                     </div>`).join('')}
@@ -931,30 +925,7 @@ async function saBiz() {
             <div style="display:flex;gap:6px;margin-top:8px">
               <input class="inp" id="bs-rl-label" placeholder="Label (e.g. Google)" style="flex:1;font-size:13px;padding:8px 10px"/>
               <input class="inp" id="bs-rl-url" placeholder="https://…" style="flex:2;font-size:13px;padding:8px 10px"/>
-              <button onclick="window._saAddLink('review')"
-                style="background:var(--brand);border:none;border-radius:var(--r-sm);
-                padding:8px 12px;color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
-            </div>
-
-            <div style="font-size:11px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px">Platform Links</div>
-            <div id="bs-platform-links">
-              ${platformLinks.length === 0
-                ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No platform links set.</div>`
-                : platformLinks.map((l, i) => `
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                      <div style="flex:1;min-width:0">
-                        <div style="font-size:13px;font-weight:500">${esc(l.label || l.platform || 'Link')}</div>
-                        <div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url || '')}</div>
-                      </div>
-                      <button onclick="window._saRemoveLink('platform',${i})"
-                        style="background:rgba(255,77,106,.1);border:none;border-radius:var(--r-xs);
-                        padding:4px 8px;color:var(--ios-red);font-size:11px;cursor:pointer;flex-shrink:0">✕</button>
-                    </div>`).join('')}
-            </div>
-            <div style="display:flex;gap:6px;margin-top:8px">
-              <input class="inp" id="bs-pl-label" placeholder="Label" style="flex:1;font-size:13px;padding:8px 10px"/>
-              <input class="inp" id="bs-pl-url" placeholder="https://…" style="flex:2;font-size:13px;padding:8px 10px"/>
-              <button onclick="window._saAddLink('platform')"
+              <button onclick="window._saAddLink()"
                 style="background:var(--brand);border:none;border-radius:var(--r-sm);
                 padding:8px 12px;color:#000;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
             </div>
@@ -997,7 +968,6 @@ async function saBiz() {
           ${tabContent}
         </div>`;
 
-      // Either open fresh or update existing modal
       const existing = document.querySelector('.modal-inner');
       if (existing) {
         existing.innerHTML = modalContent;
@@ -1011,27 +981,19 @@ async function saBiz() {
       refreshSettingsModal();
     };
 
-    window._saAddLink = function(type) {
-      const labelEl = $(type === 'review' ? 'bs-rl-label' : 'bs-pl-label');
-      const urlEl = $(type === 'review' ? 'bs-rl-url' : 'bs-pl-url');
+    window._saAddLink = function() {
+      const labelEl = $('bs-rl-label');
+      const urlEl = $('bs-rl-url');
       const label = labelEl?.value?.trim();
       const url = urlEl?.value?.trim();
       if (!label || !url) { showToast('Enter both label and URL'); return; }
       if (!/^https?:\/\//i.test(url)) { showToast('URL must start with https://'); return; }
-      if (type === 'review') {
-        bizData.reviewLinks = [...(bizData.reviewLinks || []), { label, url, platform: label.toLowerCase(), active: true }];
-      } else {
-        bizData.platformLinks = [...(bizData.platformLinks || []), { label, url, platform: label.toLowerCase(), active: true }];
-      }
+      bizData.reviewLinks = [...(bizData.reviewLinks || []), { label, url, platform: label.toLowerCase(), active: true }];
       refreshSettingsModal();
     };
 
-    window._saRemoveLink = function(type, idx) {
-      if (type === 'review') {
-        bizData.reviewLinks = (bizData.reviewLinks || []).filter((_, i) => i !== idx);
-      } else {
-        bizData.platformLinks = (bizData.platformLinks || []).filter((_, i) => i !== idx);
-      }
+    window._saRemoveLink = function(idx) {
+      bizData.reviewLinks = (bizData.reviewLinks || []).filter((_, i) => i !== idx);
       refreshSettingsModal();
     };
 
@@ -1056,7 +1018,6 @@ async function saBiz() {
       try {
         await API.business.update(bId, {
           reviewLinks: bizData.reviewLinks || [],
-          platformLinks: bizData.platformLinks || []
         });
         showToast('Links saved ✓');
       } catch(e) { showToast(e.message || 'Failed'); }
