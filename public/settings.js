@@ -93,14 +93,14 @@ function renderSettingsTab(body) {
 
       <div class="plain-card" style="margin-bottom:10px">
         <div style="font-weight:600;font-size:15px;margin-bottom:4px">Review Links</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">First = 5★ auto-redirect · 4★ shows all · Drag to reorder</div>
+        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">First link = 5★ auto-redirect · 4★ shows all</div>
         <div id="rl-list" style="margin-bottom:12px">
           ${reviewLinks.length===0
             ? `<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No review links yet.</div>`
             : reviewLinks.map((l,i)=>`
-              <div draggable="true" ondragstart="window._rlDs(${i})" ondragover="event.preventDefault()" ondrop="window._rlDr(${i})"
-                style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid ${i===0?'rgba(0,229,160,.3)':'rgba(255,255,255,.07)'};border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;cursor:grab">
-                <div style="color:rgba(238,240,248,.2);user-select:none;font-size:14px">≡</div>
+              <div
+                style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid ${i===0?'rgba(0,229,160,.3)':'rgba(255,255,255,.07)'};border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px">
+
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
@@ -108,18 +108,18 @@ function renderSettingsTab(body) {
                   </div>
                   <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
                 </div>
-                <button onclick="window._rlRm(${i})" style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:var(--r-xs);padding:5px 9px;font-size:12px;font-weight:600;color:var(--red);cursor:pointer;font-family:inherit;flex-shrink:0">Remove</button>
+
               </div>`).join('')
           }
         </div>
-        <button onclick="window._rlAdd()" class="btn btn-ghost btn-full" style="margin-bottom:4px">+ Add Review Link</button>
+        <div style="font-size:12px;color:var(--lbl3);text-align:center;padding:8px 0">Review links are managed by your administrator.</div>
       </div>
 
       <div class="plain-card" style="margin-bottom:10px">
         <div style="font-weight:600;font-size:15px;margin-bottom:4px">Bulletin Board</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:12px">Shown on every tap page</div>
-        <div id="s-bulletin" style="margin-bottom:8px"></div>
-        <button class="btn btn-ghost btn-full" onclick="window._addBull()">+ Add Item</button>
+        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Drag to reorder · Toggle visibility · Shown on customer review page</div>
+        <div id="s-bulletin" style="margin-bottom:12px"></div>
+        <button class="btn btn-ghost btn-full" onclick="window._addBull()" style="border-radius:var(--r-lg)">+ Add Item</button>
       </div>
 
       <div class="plain-card" style="margin-bottom:10px">
@@ -143,19 +143,77 @@ function renderSettingsTab(body) {
       </div>`;
 
     // ── Bulletin board list ─────────────────────────────────────────────────
+    let bullDragIdx = null;
+
     function drawBulletin(){
       const el=$('s-bulletin');if(!el)return;
-      el.innerHTML=bulletinLinks.length?bulletinLinks.map((l,i)=>`
-        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;background:var(--sys-bg2);border-radius:var(--r-sm);padding:10px 12px">
+      if(!bulletinLinks.length){
+        el.innerHTML=`<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No items yet. Add your first bulletin item.</div>`;
+        return;
+      }
+      el.innerHTML=bulletinLinks.map((l,i)=>{
+        const hidden=l.hidden||false;
+        const typeLabel={text:'Text',custom:'Link',spotify:'Spotify',youtube:'YouTube'}[l.type||'text']||'Item';
+        const typeColor={text:'var(--lbl3)',custom:'var(--a-blue)',spotify:'#1DB954',youtube:'#FF0000'}[l.type||'text']||'var(--lbl3)';
+        return `
+        <div draggable="true"
+          ondragstart="window._bullDs(${i})"
+          ondragover="event.preventDefault()"
+          ondrop="window._bullDr(${i})"
+          style="display:flex;align-items:center;gap:10px;
+            background:${hidden?'rgba(255,255,255,.02)':'rgba(255,255,255,.05)'};
+            border:1px solid ${hidden?'rgba(255,255,255,.05)':'rgba(255,255,255,.1)'};
+            border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+            opacity:${hidden?'0.5':'1'};transition:opacity .2s">
+
+          <!-- Drag handle -->
+          <div style="color:rgba(255,255,255,.2);cursor:grab;font-size:16px;flex-shrink:0;user-select:none">⠿</div>
+
+          <!-- Content -->
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600">${esc(l.label)}</div>
-            ${l.image?`<img src="${esc(l.image)}" style="width:100%;border-radius:6px;margin-top:6px;max-height:80px;object-fit:cover"/>`:``}
-            ${l.html?`<div style="font-size:11px;color:var(--lbl2);margin-top:4px;overflow:hidden;max-height:32px">${l.html}</div>`:l.url?`<div style="font-size:11px;color:var(--lbl2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${esc(l.url)}</div>`:''}
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              <span style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)}</span>
+              <span style="font-size:9px;font-weight:700;text-transform:uppercase;color:${typeColor};background:${typeColor}20;padding:1px 6px;border-radius:20px;flex-shrink:0">${typeLabel}</span>
+              ${hidden?`<span style="font-size:9px;font-weight:700;color:var(--lbl3);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:20px;flex-shrink:0">Hidden</span>`:''}
+            </div>
+            ${l.url?`<div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>`:
+              l.html?`<div style="font-size:11px;color:var(--lbl3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${l.html.replace(/<[^>]*>/g,'').slice(0,60)}…</div>`:''}
           </div>
-          <button onclick="window._rmBull(${i})" style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:600;color:var(--red);cursor:pointer;font-family:inherit;flex-shrink:0">Remove</button>
-        </div>`).join(''):`<div style="font-size:12px;color:var(--lbl2);margin-bottom:8px">No items yet.</div>`;
+
+          <!-- Actions -->
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <!-- Visibility toggle -->
+            <button onclick="window._bullToggleHide(${i})"
+              title="${hidden?'Show':'Hide'}"
+              style="background:none;border:none;cursor:pointer;padding:4px;color:${hidden?'rgba(255,255,255,.2)':'rgba(255,255,255,.6)'};font-size:18px;line-height:1">
+              ${hidden?
+                `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`:
+                `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+              }
+            </button>
+            <!-- Delete -->
+            <button onclick="window._rmBull(${i})"
+              style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);
+              border-radius:var(--r-xs);padding:5px 8px;font-size:12px;font-weight:600;
+              color:var(--red);cursor:pointer;font-family:inherit">✕</button>
+          </div>
+        </div>`;
+      }).join('');
     }
     drawBulletin();
+
+    window._bullDs = function(i){ bullDragIdx=i; };
+    window._bullDr = function(toIdx){
+      if(bullDragIdx===null||bullDragIdx===toIdx)return;
+      const moved=bulletinLinks.splice(bullDragIdx,1)[0];
+      bulletinLinks.splice(toIdx,0,moved);
+      bullDragIdx=null;
+      drawBulletin();
+    };
+    window._bullToggleHide = function(i){
+      bulletinLinks[i].hidden = !bulletinLinks[i].hidden;
+      drawBulletin();
+    };
 
     // ── Review link handlers ────────────────────────────────────────────────
     window._rlDs = function(i){ dragIdx=i; };
