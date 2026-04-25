@@ -904,7 +904,7 @@ async function saBiz() {
       }
 
       if (settingsTab === 'links') {
-        const reviewLinks = bizData?.reviewLinks || [];
+       const reviewLinks = [...(bizData?.reviewLinks || []), ...(bizData?.platformLinks || []).filter(p => !(bizData?.reviewLinks || []).some(r => r.url === p.url))];
         tabContent = `
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--lbl3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Review Links</div>
