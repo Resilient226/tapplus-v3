@@ -93,20 +93,28 @@ function renderSettingsTab(body) {
 
       <div class="plain-card" style="margin-bottom:10px">
         <div style="font-weight:600;font-size:15px;margin-bottom:4px">Review Links</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">First link = 5★ auto-redirect · 4★ shows all · Set by administrator</div>
+        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Toggle to enable · First active = 5★ redirect · Managed by administrator</div>
         <div id="rl-list" style="margin-bottom:8px">
-          ${(biz?.reviewLinks||[]).length===0
+          ${reviewLinks.length===0
             ? `<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No review links configured yet.</div>`
-            : (biz?.reviewLinks||[]).map((l,i)=>`
-              <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid ${i===0?'rgba(0,229,160,.3)':'rgba(255,255,255,.07)'};border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px">
-                <div style="flex:1;min-width:0">
-                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
-                    ${i===0?`<span style="background:rgba(0,229,160,.15);color:var(--brand);font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(0,229,160,.3)">5★ REDIRECT</span>`:''}
+            : reviewLinks.map((l,i)=>{
+                const isActive = l.active !== false;
+                const isFirst = reviewLinks.findIndex(x => x.active !== false) === i;
+                return `
+                <div style="display:flex;align-items:center;gap:12px;
+                  background:${isActive?'rgba(255,255,255,.05)':'rgba(255,255,255,.02)'};
+                  border:1px solid ${isFirst?'rgba(0,229,160,.3)':isActive?'rgba(255,255,255,.1)':'rgba(255,255,255,.05)'};
+                  border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+                  opacity:${isActive?'1':'0.45'};transition:opacity .2s">
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                      <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
+                      ${isFirst?`<span style="background:rgba(0,229,160,.15);color:var(--brand);font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(0,229,160,.3)">5★ REDIRECT</span>`:''}
+                    </div>
+                    <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
                   </div>
-                  <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
-                </div>
-              </div>`).join('')
+                  <div class="toggle${isActive?' on':''}" id="rl-tog-${i}" onclick="window._rlToggle(${i})"><div class="toggle-thumb"></div></div>
+                </div>`}).join('')
           }
         </div>
       </div>
@@ -238,14 +246,10 @@ function renderSettingsTab(body) {
     };
 
     // ── Review link handlers ────────────────────────────────────────────────
-    window._rlDs = function(i){ dragIdx=i; };
-    window._rlDr = function(toIdx){
-      if(dragIdx===null||dragIdx===toIdx)return;
-      const moved=reviewLinks.splice(dragIdx,1)[0];
-      reviewLinks.splice(toIdx,0,moved);
-      dragIdx=null; draw();
+    window._rlToggle = function(i){
+      reviewLinks[i].active = reviewLinks[i].active === false ? true : false;
+      draw();
     };
-    window._rlRm = function(i){ reviewLinks.splice(i,1); draw(); };
 
     // Direct add — no platform picker needed
     window._rlAdd = function(){
