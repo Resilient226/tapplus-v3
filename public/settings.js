@@ -1,7 +1,14 @@
 function renderSettingsTab(body) {
   const biz = State.biz;
   const b   = biz?.branding || {};
-  let reviewLinks   = [...(biz?.reviewLinks || [])];
+  // Merge platformLinks into reviewLinks so all available links show with toggles
+  const _existing = biz?.reviewLinks || [];
+  const _platform = biz?.platformLinks || [];
+  const _merged = [..._existing];
+  _platform.forEach(p => {
+    if (!_merged.some(r => r.url === p.url)) _merged.push({...p, active: false});
+  });
+  let reviewLinks = _merged;
   let bulletinLinks = [...(b.bulletinLinks || [])];
   let dragIdx = null;
 
