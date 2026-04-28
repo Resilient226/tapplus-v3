@@ -322,6 +322,12 @@ function renderSettingsTab(body) {
     // ── Review link handlers ────────────────────────────────────────────────
     window._rlToggle = function(i){
       reviewLinks[i].active = reviewLinks[i].active === false ? true : false;
+      // Keep active links at the top in their relative order
+      const active = reviewLinks.filter(l => l.active !== false);
+      const inactive = reviewLinks.filter(l => l.active === false);
+      reviewLinks.length = 0;
+      active.forEach(l => reviewLinks.push(l));
+      inactive.forEach(l => reviewLinks.push(l));
       _rlRender();
     };
 
