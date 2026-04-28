@@ -99,30 +99,46 @@ function renderSettingsTab(body) {
       </div>
 
       <div class="plain-card" style="margin-bottom:10px">
-        <div style="font-weight:600;font-size:15px;margin-bottom:4px">Review Links</div>
-        <div style="font-size:12px;color:var(--lbl2);margin-bottom:14px">Toggle to enable · First active = 5★ redirect · Managed by administrator</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-weight:600;font-size:15px">Review Links</div>
+          <button onclick="window._rlToggleExpand()"
+            style="background:none;border:none;color:var(--brand);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;padding:0"
+            id="rl-expand-btn">Show All</button>
+        </div>
+        <div style="font-size:12px;color:var(--lbl2);margin-bottom:12px">Toggle to enable · First active = 5★ redirect · Managed by administrator</div>
+
+        <!-- Search -->
+        <input class="inp" id="rl-search" placeholder="Search links…" oninput="window._rlSearch(this.value)"
+          style="margin-bottom:12px;font-size:13px;padding:8px 12px"/>
+
         <div id="rl-list" style="margin-bottom:8px">
-          ${reviewLinks.length===0
-            ? `<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No review links configured yet.</div>`
-            : reviewLinks.map((l,i)=>{
-                const isActive = l.active !== false;
-                const isFirst = reviewLinks.findIndex(x => x.active !== false) === i;
-                return `
-                <div style="display:flex;align-items:center;gap:12px;
-                  background:${isActive?'rgba(255,255,255,.05)':'rgba(255,255,255,.02)'};
-                  border:1px solid ${isFirst?'rgba(0,229,160,.3)':isActive?'rgba(255,255,255,.1)':'rgba(255,255,255,.05)'};
-                  border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
-                  opacity:${isActive?'1':'0.45'};transition:opacity .2s">
-                  <div style="flex:1;min-width:0">
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                      <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
-                      ${isFirst?`<span style="background:rgba(0,229,160,.15);color:var(--brand);font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(0,229,160,.3)">5★ REDIRECT</span>`:''}
+          ${(()=>{
+            const active = reviewLinks.filter(l => l.active !== false);
+            const toShow = active.length === 0 ? reviewLinks.slice(0,3) : active;
+            return toShow.length === 0
+              ? `<div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.1);border-radius:var(--r-md);padding:20px;text-align:center;color:var(--lbl2);font-size:13px">No review links configured yet.</div>`
+              : toShow.map((l,i)=>{
+                  const realIdx = reviewLinks.indexOf(l);
+                  const isActive = l.active !== false;
+                  const isFirst = reviewLinks.findIndex(x => x.active !== false) === realIdx;
+                  return `
+                  <div style="display:flex;align-items:center;gap:12px;
+                    background:${isActive?'rgba(255,255,255,.05)':'rgba(255,255,255,.02)'};
+                    border:1px solid ${isFirst?'rgba(0,229,160,.3)':isActive?'rgba(255,255,255,.1)':'rgba(255,255,255,.05)'};
+                    border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+                    opacity:${isActive?'1':'0.45'};transition:opacity .2s">
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
+                        ${isFirst?`<span style="background:rgba(0,229,160,.15);color:var(--brand);font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(0,229,160,.3)">5★ REDIRECT</span>`:''}
+                      </div>
+                      <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
                     </div>
-                    <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
-                  </div>
-                  <div class="toggle${isActive?' on':''}" id="rl-tog-${i}" onclick="window._rlToggle(${i})"><div class="toggle-thumb"></div></div>
-                </div>`}).join('')
-          }
+                    <div class="toggle${isActive?' on':''}" id="rl-tog-${realIdx}" onclick="window._rlToggle(${realIdx})"><div class="toggle-thumb"></div></div>
+                  </div>`;
+                }).join('') +
+                (reviewLinks.length > toShow.length ? `<div style="font-size:12px;color:var(--lbl3);text-align:center;padding:4px 0">${reviewLinks.length - toShow.length} more — tap "Show All" to see</div>` : '');
+          })()}
         </div>
       </div>
 
@@ -252,10 +268,61 @@ function renderSettingsTab(body) {
       drawBulletin();
     };
 
+    let _rlExpanded = false;
+    let _rlQuery = '';
+
+    function _rlRender() {
+      const el = document.getElementById('rl-list'); if (!el) return;
+      const btn = document.getElementById('rl-expand-btn');
+      const filtered = _rlQuery
+        ? reviewLinks.filter(l => (l.label||l.platform||'').toLowerCase().includes(_rlQuery.toLowerCase()))
+        : reviewLinks;
+      const active = filtered.filter(l => l.active !== false);
+      const toShow = _rlExpanded || _rlQuery ? filtered : (active.length > 0 ? active : filtered.slice(0, 3));
+      if (btn) btn.textContent = _rlExpanded ? 'Collapse' : 'Show All';
+
+      el.innerHTML = toShow.length === 0
+        ? `<div style="font-size:13px;color:var(--lbl3);padding:8px 0">No links match your search.</div>`
+        : toShow.map(l => {
+            const realIdx = reviewLinks.indexOf(l);
+            const isActive = l.active !== false;
+            const isFirst = reviewLinks.findIndex(x => x.active !== false) === realIdx;
+            return `
+            <div style="display:flex;align-items:center;gap:12px;
+              background:${isActive?'rgba(255,255,255,.05)':'rgba(255,255,255,.02)'};
+              border:1px solid ${isFirst?'rgba(0,229,160,.3)':isActive?'rgba(255,255,255,.1)':'rgba(255,255,255,.05)'};
+              border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+              opacity:${isActive?'1':'0.45'};transition:opacity .2s">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-weight:600;font-size:14px">${esc(l.label||l.platform||'Link')}</span>
+                  ${isFirst?`<span style="background:rgba(0,229,160,.15);color:var(--brand);font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(0,229,160,.3)">5★ REDIRECT</span>`:''}
+                </div>
+                <div style="font-size:11px;color:var(--lbl2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</div>
+              </div>
+              <div class="toggle${isActive?' on':''}" id="rl-tog-${realIdx}" onclick="window._rlToggle(${realIdx})"><div class="toggle-thumb"></div></div>
+            </div>`;
+          }).join('') +
+          (!_rlExpanded && !_rlQuery && filtered.length > toShow.length
+            ? `<div style="font-size:12px;color:var(--lbl3);text-align:center;padding:4px 0">${filtered.length - toShow.length} more — tap "Show All"</div>`
+            : '');
+    }
+
+    window._rlToggleExpand = function() {
+      _rlExpanded = !_rlExpanded;
+      _rlRender();
+    };
+
+    window._rlSearch = function(q) {
+      _rlQuery = q;
+      _rlExpanded = q.length > 0;
+      _rlRender();
+    };
+
     // ── Review link handlers ────────────────────────────────────────────────
     window._rlToggle = function(i){
       reviewLinks[i].active = reviewLinks[i].active === false ? true : false;
-      draw();
+      _rlRender();
     };
 
     // Direct add — no platform picker needed
@@ -507,7 +574,7 @@ function renderSettingsTab(body) {
     ['spotify','phone','email','instagram','tiktok','custom'].forEach(t=>{allowed[t]=!!$('tog-'+t)?.classList.contains('on');});
     const logoUrl=window._logoData||$('s-logo')?.value?.trim()||b.logoUrl||'';
     const updates={
-      reviewLinks,
+      reviewLinks: reviewLinks.filter(l => l.active !== false),
       branding:{
         ...b,
         name:        $('s-name')?.value?.trim()||b.name,
